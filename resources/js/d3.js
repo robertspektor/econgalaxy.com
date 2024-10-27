@@ -76,147 +76,277 @@ var renderGalaxyMap = function (sectors, jumpGates) {
 var renderSystemMap = function () {
     const width = 2000;
     const height = 2000;
-    const gridSize = 50;
 
-    // Beispiel für Daten der Planeten, Raumstationen, Asteroiden, etc.
+    const timeScaleFactor = 3600;
+
     const planets = [
-        { id: 1, name: 'Planet A', x: 200, y: 150, image: '133606071_10145164.png' },
-        { id: 2, name: 'Planet B', x: 400, y: 350, image: '133606071_10145164.png' },
+        {
+            id: 1, name: 'Planet A', orbitRadius: 150, size: 10, color: "#B0BEC5",
+            realOrbitPeriod: 1,
+            moons: [
+                { orbitRadius: 20, size: 3, color: "#A4A4A4", realOrbitPeriod: 0.1 }
+            ]
+        },
+        {
+            id: 2, name: 'Planet B', orbitRadius: 300, size: 15, color: "#ECEFF1",
+            realOrbitPeriod: 1.88,
+            moons: [
+                { orbitRadius: 30, size: 4, color: "#CCCCCC", realOrbitPeriod: 0.1 },
+                { orbitRadius: 40, size: 2, color: "#AAAAAA", realOrbitPeriod: 0.2 }
+            ]
+        }
     ];
 
-    const stations = [
-        { id: 1, name: 'Station Alpha', x: 500, y: 100 },
+    const fleets = [
+        { x: 300, y: 300, ships: 4, allegiance: 'player' },
+        { x: 500, y: 500, ships: 2, allegiance: 'neutral' },
+        { x: 700, y: 400, ships: 6, allegiance: 'enemy' }
     ];
 
-    const asteroids = [
-        { id: 1, name: 'Asteroid Belt', x: 700, y: 600 },
-    ];
+    planets.forEach(planet => {
+        planet.speed = 360 / (planet.realOrbitPeriod * timeScaleFactor);
+        planet.moons.forEach(moon => {
+            moon.speed = 360 / (moon.realOrbitPeriod * timeScaleFactor);
+        });
+    });
 
-    const jumpGates = [
-        { from: { x: 100, y: 100 }, to: { x: 800, y: 700 } },
-    ];
+    const screenWidth = window.innerWidth;
+    const screenHeight = window.innerHeight;
+    const centerX = width / 2;
+    const centerY = height / 2;
+    const offsetX = screenWidth / 2 - centerX;
+    const offsetY = screenHeight / 2 - centerY;
 
-    const ships = [
-        { id: 1, name: 'Ship 1', x: 300, y: 500, owner: 'player' },
-        { id: 2, name: 'Ship 2', x: 600, y: 400, owner: 'other' },
-    ];
-
-    // Erstelle das SVG-Element und füge Zoom- und Pan-Funktionalität hinzu
     const svg = d3.select("#system-map")
         .append("svg")
-        // full width and height
-        .attr("width", window.innerWidth)
-        .attr("height", window.innerHeight)
+        .attr("width", screenWidth)
+        .attr("height", screenHeight)
         .call(d3.zoom()
-            .scaleExtent([0.5, 5])  // Begrenze den Zoom-Faktor zwischen 50% und 500%
+            .scaleExtent([0.5, 5])
             .on("zoom", zoomed));
 
-    // Gruppe, in der alle Elemente enthalten sind, um sie gemeinsam zu verschieben und zu skalieren
-    const container = svg.append("g");
+    const defs = svg.append("defs");
+    const filter = defs.append("filter")
+        .attr("id", "glow")
+        .attr("x", "-50%")
+        .attr("y", "-50%")
+        .attr("width", "200%")
+        .attr("height", "200%");
 
-    // Funktion für das Zoomen und Panning mit Begrenzung
+    filter.append("feGaussianBlur")
+        .attr("in", "SourceGraphic")
+        .attr("stdDeviation", "20")
+        .attr("result", "blur");
+
+    filter.append("feMerge")
+        .selectAll("feMergeNode")
+        .data(["blur", "SourceGraphic"])
+        .enter()
+        .append("feMergeNode")
+        .attr("in", d => d);
+
+    const container = svg.append("g")
+        .attr("transform", `translate(${offsetX},${offsetY})`);
+
     function zoomed(event) {
         const transform = event.transform;
-
-        // Grenzen setzen: Innerhalb des Bereichs (0, 0) bis (width, height)
-        const scale = transform.k;  // Der aktuelle Zoom-Faktor
-
-        // Berechne die Maximalen und Minimalen Translationen
-        const maxX = Math.max(0, width * scale - 1024);  // width * scale - sichtbarer Bereich (1024)
-        const maxY = Math.max(0, height * scale - 768);  // height * scale - sichtbarer Bereich (768)
-
-        // Begrenze die Transformationen auf die Grid-Bounds
-        const boundedX = Math.min(0, Math.max(transform.x, -maxX));
-        const boundedY = Math.min(0, Math.max(transform.y, -maxY));
-
-        container.attr("transform", `translate(${boundedX},${boundedY}) scale(${scale})`);
+        container.attr("transform", `translate(${transform.x + offsetX},${transform.y + offsetY}) scale(${transform.k})`);
     }
 
-    // 1. Gitternetz erstellen
-    for (let x = 0; x < width; x += gridSize) {
-        for (let y = 0; y < height; y += gridSize) {
-            container.append("rect")
-                .attr("x", x)
-                .attr("y", y)
-                .attr("width", gridSize)
-                .attr("height", gridSize)
-                .attr("fill", "rgba(55, 55, 55, 0.1)")
-                .attr("stroke", "rgba(55, 55, 55, 1)")
-                .attr("stroke-width", 0.2)
-                .on("mouseover", function() {
-                    d3.select(this)
-                        .attr("fill", "rgba(55, 55, 55, 0.5)");
-                })
-                .on("mouseout", function() {
-                    d3.select(this)
-                        .attr("fill", "rgba(55, 55, 55, 0.1)");
-                });
-        }
-    }
+    // Zeichne die Sonne
+    container.append("circle")
+        .attr("cx", centerX)
+        .attr("cy", centerY)
+        .attr("r", 40)
+        .attr("fill", "#FFD700")
+        .attr("filter", "url(#glow)");
 
-    // 2. Planeten, Raumstationen und Asteroiden platzieren
-
-    // Planeten
-    container.selectAll("circle.planet")
+    // Erstelle eine Gruppe für Planeten
+    const planetGroups = container.selectAll("g.planet")
         .data(planets)
         .enter()
-        .append("svg:image")
-        .attr("class", "planet")
-        .attr("x", d => d.x)
-        .attr("y", d => d.y)
-        .attr("width", 50)
-        .attr("height", 50)
-        .attr("xlink:href", d => `/images/planets/${d.image}`)
+        .append("g")
+        .attr("class", "planet");
 
-    // Raumstationen
-    container.selectAll("rect.station")
-        .data(stations)
+    planetGroups.each(function(planet) {
+        planet.trail = [];
+
+        const planetGroup = d3.select(this);
+
+        // Zeichne die Umlaufbahn des Planeten
+        container.append("circle")
+            .attr("cx", centerX)
+            .attr("cy", centerY)
+            .attr("r", planet.orbitRadius)
+            .attr("fill", "none")
+            .attr("stroke", "#666")
+            .attr("stroke-dasharray", "2, 2")
+            .attr("opacity", 0.5)
+            .attr("class", "planet-orbit");
+
+        // Hover-Zone für Planetenumlaufbahn
+        const hoverZone = container.append("circle")
+            .attr("cx", centerX)
+            .attr("cy", centerY)
+            .attr("r", planet.orbitRadius)
+            .attr("fill", "none")
+            .attr("stroke", "rgba(255, 255, 0, 0.2)")
+            .attr("stroke-width", 20)
+            .attr("opacity", 0)
+            .on("mouseover", function() {
+                d3.select(this).attr("opacity", 0.5);
+            })
+            .on("mouseout", function() {
+                d3.select(this).attr("opacity", 0);
+            });
+
+        planet.hoverZone = hoverZone;
+
+        // Zeichne den Planeten
+        planetGroup.append("circle")
+            .attr("class", "planet-body")
+            .attr("r", planet.size)
+            .attr("fill", planet.color)
+            .on("mouseover", function() {
+                planet.hoverZone.attr("opacity", 0.5); // Hover-Zone bei Hover auf Planeten anzeigen
+            })
+            .on("mouseout", function() {
+                planet.hoverZone.attr("opacity", 0); // Hover-Zone bei Verlassen des Planeten ausblenden
+            });
+
+        // Schatten für Tag- und Nachtseite des Planeten
+        planetGroup.append("path")
+            .attr("class", "planet-shadow")
+            .attr("fill", "rgba(0, 0, 0, 0.5)");
+
+        // Erstelle Umlaufbahnen für die Monde relativ zum Planeten
+        const moonOrbits = planetGroup.selectAll("circle.moon-orbit")
+            .data(planet.moons)
+            .enter()
+            .append("circle")
+            .attr("class", "moon-orbit")
+            .attr("fill", "none")
+            .attr("stroke", "#666")
+            .attr("stroke-dasharray", "2, 2")
+            .attr("opacity", 0.5);
+
+        // Hover-Zone für Mondumlaufbahnen
+        const moonHoverZones = planetGroup.selectAll("circle.moon-hover")
+            .data(planet.moons)
+            .enter()
+            .append("circle")
+            .attr("class", "moon-hover")
+            .attr("fill", "none")
+            .attr("stroke", "rgba(0, 0, 255, 0.2)")
+            .attr("stroke-width", 10)
+            .attr("opacity", 0)
+            .on("mouseover", function(event, d) {
+                d3.select(this).attr("opacity", 0.5);
+            })
+            .on("mouseout", function(event, d) {
+                d3.select(this).attr("opacity", 0);
+            });
+
+        // Zeichne die Monde
+        planetGroup.selectAll("circle.moon")
+            .data(planet.moons)
+            .enter()
+            .append("circle")
+            .attr("class", "moon")
+            .attr("r", d => d.size)
+            .attr("fill", d => d.color)
+            .on("mouseover", function(event, moon) {
+                d3.select(this.parentNode).selectAll(".moon-hover")
+                    .filter(d => d === moon)
+                    .attr("opacity", 0.5);
+            })
+            .on("mouseout", function(event, moon) {
+                d3.select(this.parentNode).selectAll(".moon-hover")
+                    .filter(d => d === moon)
+                    .attr("opacity", 0);
+            });
+    });
+
+    // Erstelle eine Gruppe für die Flottenanzeige
+    const fleetGroup = container.selectAll("g.fleet")
+        .data(fleets)
         .enter()
-        .append("rect")
-        .attr("class", "station")
-        .attr("x", d => d.x - 15)
-        .attr("y", d => d.y - 15)
-        .attr("width", 30)
-        .attr("height", 30)
-        .attr("fill", "gray");
+        .append("g")
+        .attr("class", "fleet")
+        .attr("transform", d => `translate(${d.x}, ${d.y})`);
 
-    // Asteroidengürtel
-    container.selectAll("circle.asteroid")
-        .data(asteroids)
-        .enter()
-        .append("circle")
-        .attr("class", "asteroid")
-        .attr("cx", d => d.x)
-        .attr("cy", d => d.y)
-        .attr("r", 40)
-        .attr("fill", "brown")
-        .attr("opacity", 0.7);
+    fleetGroup.each(function(fleet) {
+        const colorMap = {
+            player: "green",
+            neutral: "gray",
+            enemy: "red"
+        };
 
-    // 3. JumpGates als Linien zeichnen
-    // container.selectAll("line.jumpgate")
-    //     .data(jumpGates)
-    //     .enter()
-    //     .append("line")
-    //     .attr("class", "jumpgate")
-    //     .attr("x1", d => d.from.x)
-    //     .attr("y1", d => d.from.y)
-    //     .attr("x2", d => d.to.x)
-    //     .attr("y2", d => d.to.y)
-    //     .attr("stroke", "cyan")
-    //     .attr("stroke-width", 2);
+        const group = d3.select(this);
 
-    // 4. Raumschiffe anzeigen
-    container.selectAll("circle.ship")
-        .data(ships)
-        .enter()
-        .append("circle")
-        .attr("class", "ship")
-        .attr("cx", d => d.x)
-        .attr("cy", d => d.y)
-        .attr("r", 10)
-        .attr("fill", d => d.owner === 'player' ? 'green' : 'red');
+        // Hintergrund und Rahmen der Flottenanzeige
+        group.append("rect")
+            .attr("x", -15)
+            .attr("y", -10)
+            .attr("width", 30)
+            .attr("height", 20)
+            .attr("fill", colorMap[fleet.allegiance])
+            .attr("rx", 3)
+            .attr("ry", 3)
+            .attr("opacity", 0.2);
+
+        // Symbol und Anzahl der Schiffe
+        group.append("text")
+            .attr("x", 0)
+            .attr("y", 0)
+            .attr("dy", "0.35em")
+            .attr("fill", "white")
+            .attr("text-anchor", "middle")
+            .style("font-size", "12px")
+            .style("font-weight", "bold")
+            .text(fleet.ships);
+    });
+
+    // Funktion für die Umlaufbewegung von Planeten und Monden
+    function rotatePlanets() {
+        planetGroups.each(function(planet) {
+            planet.angle = (planet.angle || 0) + planet.speed;
+            const planetX = centerX + planet.orbitRadius * Math.cos(planet.angle * Math.PI / 180);
+            const planetY = centerY + planet.orbitRadius * Math.sin(planet.angle * Math.PI / 180);
+
+            // Aktualisiere Position des Planeten
+            d3.select(this).select(".planet-body")
+                .attr("cx", planetX)
+                .attr("cy", planetY);
+
+            // Aktualisiere die Mondumlaufbahnen relativ zum Planeten
+            d3.select(this).selectAll(".moon-orbit, .moon-hover")
+                .attr("cx", planetX)
+                .attr("cy", planetY)
+                .attr("r", d => d.orbitRadius);
+
+            // Aktualisiere die Schattenposition des Planeten
+            const shadowAngle = planet.angle - 90;
+            const x1 = planetX + planet.size * Math.cos(shadowAngle * Math.PI / 180);
+            const y1 = planetY + planet.size * Math.sin(shadowAngle * Math.PI / 180);
+            const x2 = planetX + planet.size * Math.cos((shadowAngle + 180) * Math.PI / 180);
+            const y2 = planetY + planet.size * Math.sin((shadowAngle + 180) * Math.PI / 180);
+
+            d3.select(this).select(".planet-shadow")
+                .attr("d", `M ${x1},${y1} A ${planet.size},${planet.size} 0 0,1 ${x2},${y2} L ${planetX},${planetY} Z`);
+
+            // Aktualisiere Position der Monde um den Planeten
+            d3.select(this).selectAll("circle.moon")
+                .data(planet.moons)
+                .attr("cx", d => planetX + d.orbitRadius * Math.cos((d.angle = (d.angle || 0) + d.speed) * Math.PI / 180))
+                .attr("cy", d => planetY + d.orbitRadius * Math.sin(d.angle * Math.PI / 180));
+        });
+
+        requestAnimationFrame(rotatePlanets);
+    }
+
+    rotatePlanets();
 }
-
 
 // make function available to other scripts
 window.renderGalaxyMap = renderGalaxyMap;
