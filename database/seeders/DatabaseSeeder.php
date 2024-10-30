@@ -15,8 +15,8 @@ class DatabaseSeeder extends Seeder
     {
         $this->call([
             FactionSeeder::class,
-            SectorsTableSeeder::class,
-            JumpGatesTableSeeder::class,
+//            SectorsTableSeeder::class,
+//            JumpGatesTableSeeder::class,
             MegaCorporationSeeder::class,
             EchoCovertWeaponSeeder::class,
             UnionDefenseWeaponSeeder::class,
