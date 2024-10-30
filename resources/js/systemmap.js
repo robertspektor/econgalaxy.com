@@ -17,7 +17,6 @@ const renderSystemMap = (system, sectors, planets, moons, fleets) => {
     const centerX = dimensions.width / 2;
     const centerY = dimensions.height / 2;
 
-    console.log(sectors);
 
     // const planets = [
     //     { id: 1, name: 'Planet A', size: 10, color: "#B0BEC5", orbitRadius: baseOrbitRadius + orbitSpacing, angle: 0 },
@@ -189,8 +188,6 @@ const drawSectors = (container, sectors, centerX, centerY) => {
     sectors.forEach(sector => {
         const { ring_index, segment_index, inner_radius, outer_radius } = sector;
 
-        console.log(ring_index);
-
         const segmentCount = 18 + ring_index * 2; // Anzahl der Segmente für diesen Ring
         const segmentAngle = 360 / segmentCount;
         const startAngle = segment_index * segmentAngle;
@@ -338,6 +335,7 @@ const drawFleets = (container, fleets, sectors, centerX, centerY) => {
         if (fleet.status === "moving" && fleet.current_sector_id && fleet.destination_sector_id) {
             const currentSector = sectors.find(s => s.id === fleet.current_sector_id);
             const destinationSector = sectors.find(s => s.id === fleet.destination_sector_id);
+
             if (currentSector && destinationSector) {
                 const { x: currentX, y: currentY } = calculateSectorPosition(currentSector, centerX, centerY);
                 const { x: destinationX, y: destinationY } = calculateSectorPosition(destinationSector, centerX, centerY);
@@ -346,66 +344,19 @@ const drawFleets = (container, fleets, sectors, centerX, centerY) => {
                 startY = currentY;
                 targetX = destinationX;
                 targetY = destinationY;
-
-                // Flotten-Gruppe erstellen
-                const fleetGroup = container.append("g")
-                    .attr("transform", `translate(${startX}, ${startY})`);
-
-                fleetGroup.append("polygon")
-                    .attr("points", "-10,10 10,10 0,-10")
-                    .attr("fill", fleet.isFriendly ? "green" : "red");
-
-                fleetGroup.append("text")
-                    .attr("x", 0)
-                    .attr("y", 20)
-                    .attr("text-anchor", "middle")
-                    .attr("font-size", "10px")
-                    .attr("fill", "#FFFFFF")
-                    .text(fleet.size);
-
-                // Zeichne die Bewegungslinie für befreundete Flotten
-                let line;
-                if (fleet.isFriendly) {
-                    line = container.append("line")
-                        .attr("x1", targetX)
-                        .attr("y1", targetY)
-                        .attr("x2", targetX)
-                        .attr("y2", targetY) // Startet die Linie auf der Startposition
-                        .attr("stroke", "rgba(0, 255, 0, 0.5)")
-                        .attr("stroke-width", 1)
-                        .attr("stroke-dasharray", "4,4");
-                }
-
-                // D3 Timer for continuous animation
-                d3.timer(function() {
-                    const progress = calculateProgress(fleet.departure_time, fleet.arrival_time);
-                    const x = startX + (targetX - startX) * progress;
-                    const y = startY + (targetY - startY) * progress;
-                    fleetGroup.attr("transform", `translate(${x}, ${y})`);
-
-                    // Linie aktualisieren
-                    if (line) {
-                        line.attr("x2", x)
-                            .attr("y2", y);
-                    }
-
-                    // Beende den Timer, wenn die Flotte das Ziel erreicht hat
-                    if (progress >= 1) {
-                        if (line) line.remove(); // Entferne die Linie, wenn die Flotte das Ziel erreicht
-                        return true; // Stoppt den Timer
-                    }
-                });
+            } else {
+                console.warn(`Error finding sectors for Fleet ${fleet.id}`);
             }
         } else if (fleet.current_sector_id) {
             const sector = sectors.find(s => s.id === fleet.current_sector_id);
-            if (sector) {
-                const { x, y } = calculateSectorPosition(sector, centerX, centerY);
-                const fleetGroup = container.append("g")
-                    .attr("transform", `translate(${x}, ${y})`);
 
-                fleetGroup.append("polygon")
-                    .attr("points", "-10,10 10,10 0,-10")
-                    .attr("fill", fleet.isFriendly ? "green" : "red");
+            if (sector) {
+
+                const { x, y } = calculateSectorPosition(sector, centerX, centerY);
+
+                const fleetGroup = container.append("g").attr("transform", `translate(${x}, ${y})`);
+
+                fleetGroup.append("polygon").attr("points", "-10,10 10,10 0,-10").attr("fill", fleet.isFriendly ? "green" : "red");
 
                 fleetGroup.append("text")
                     .attr("x", 0)
@@ -414,6 +365,8 @@ const drawFleets = (container, fleets, sectors, centerX, centerY) => {
                     .attr("font-size", "10px")
                     .attr("fill", "#FFFFFF")
                     .text(fleet.size);
+            } else {
+                console.warn(`Sector not found for Fleet ${fleet.id} with Sector ID ${fleet.current_sector_id}`);
             }
         }
     });
@@ -421,16 +374,17 @@ const drawFleets = (container, fleets, sectors, centerX, centerY) => {
 
 
 const calculateSectorPosition = (sector, centerX, centerY) => {
-    const segmentCount = 18 + sector.ring_index * 2;
+
+    const segmentCount = 18 + sector.ring_index * 2; // Anzahl der Segmente im Ring
     const segmentAngle = 360 / segmentCount;
     const startAngle = sector.segment_index * segmentAngle;
-    const midAngleRad = (startAngle + segmentAngle / 2) * (Math.PI / 180);
+    const midAngleRad = (startAngle + segmentAngle / 2);
     const radius = (sector.inner_radius + sector.outer_radius) / 2;
 
-    return {
-        x: centerX + radius * Math.cos(midAngleRad),
-        y: centerY + radius * Math.sin(midAngleRad)
-    };
+    const x = centerX + radius * Math.cos((midAngleRad - 90) * (Math.PI / 180));
+    const y = centerY + radius * Math.sin((midAngleRad - 90) * (Math.PI / 180));
+
+    return { x, y };
 };
 
 const calculateProgress = (departureTime, arrivalTime) => {
