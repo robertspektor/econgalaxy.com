@@ -74,57 +74,62 @@ var renderGalaxyMap = function (sectors, jumpGates) {
 }
 
 var renderSystemMap = function () {
-    const width = 2000;
-    const height = 2000;
+    const width = window.innerWidth;
+    const height = window.innerHeight;
 
-    const timeScaleFactor = 3600;
-
-    const planets = [
-        {
-            id: 1, name: 'Planet A', orbitRadius: 150, size: 10, color: "#B0BEC5",
-            realOrbitPeriod: 1,
-            moons: [
-                { orbitRadius: 20, size: 3, color: "#A4A4A4", realOrbitPeriod: 0.1 }
-            ]
-        },
-        {
-            id: 2, name: 'Planet B', orbitRadius: 300, size: 15, color: "#ECEFF1",
-            realOrbitPeriod: 1.88,
-            moons: [
-                { orbitRadius: 30, size: 4, color: "#CCCCCC", realOrbitPeriod: 0.1 },
-                { orbitRadius: 40, size: 2, color: "#AAAAAA", realOrbitPeriod: 0.2 }
-            ]
-        }
-    ];
-
-    const fleets = [
-        { x: 300, y: 300, ships: 4, allegiance: 'player' },
-        { x: 500, y: 500, ships: 2, allegiance: 'neutral' },
-        { x: 700, y: 400, ships: 6, allegiance: 'enemy' }
-    ];
-
-    planets.forEach(planet => {
-        planet.speed = 360 / (planet.realOrbitPeriod * timeScaleFactor);
-        planet.moons.forEach(moon => {
-            moon.speed = 360 / (moon.realOrbitPeriod * timeScaleFactor);
-        });
-    });
-
-    const screenWidth = window.innerWidth;
-    const screenHeight = window.innerHeight;
+    // Zentrum des Sonnensystems basierend auf Bildschirmgröße
     const centerX = width / 2;
     const centerY = height / 2;
-    const offsetX = screenWidth / 2 - centerX;
-    const offsetY = screenHeight / 2 - centerY;
+
+    // Festlegung der Abstände zwischen Umlaufbahnen und Zonen
+    const baseOrbitRadius = 100; // Basisradius für die erste Umlaufbahn
+    const orbitSpacing = 100;    // Gleicher Abstand für jede weitere Umlaufbahn und Zone
+
+    // Beispiel-Daten für Planeten mit festen Koordinaten und unterschiedlichen Umlaufbahnen
+    const planets = [
+        { id: 1, name: 'Planet A', size: 10, color: "#B0BEC5", orbitRadius: baseOrbitRadius + orbitSpacing * 1, angle: 0 },
+        { id: 2, name: 'Planet B', size: 15, color: "#ECEFF1", orbitRadius: baseOrbitRadius + orbitSpacing * 2, angle: 45 },
+        { id: 3, name: 'Planet C', size: 12, color: "#FFB6C1", orbitRadius: baseOrbitRadius + orbitSpacing * 3, angle: 90 }
+    ];
+
+    // Beispiel-Daten für Monde mit festen Umlaufbahnen um die Planeten
+    const moons = [
+        { id: 1, planetId: 1, name: 'Moon A1', size: 4, color: "#A4A4A4", orbitRadius: 20, angle: 90 },
+        { id: 2, planetId: 2, name: 'Moon B1', size: 3, color: "#CCCCCC", orbitRadius: 25, angle: 180 },
+        { id: 3, planetId: 3, name: 'Moon C1', size: 5, color: "#AAAAAA", orbitRadius: 30, angle: 270 }
+    ];
+
+    // Zonen, die zwischen den Umlaufbahnen versetzt sind
+    const zones = [
+        { id: 1, centerX: centerX, centerY: centerY, innerRadius: baseOrbitRadius + 50, outerRadius: baseOrbitRadius + orbitSpacing + 50, segments: 18 },
+        { id: 2, centerX: centerX, centerY: centerY, innerRadius: baseOrbitRadius + orbitSpacing + 50, outerRadius: baseOrbitRadius + 2 * orbitSpacing + 50, segments: 26 },
+        { id: 3, centerX: centerX, centerY: centerY, innerRadius: baseOrbitRadius + 2 * orbitSpacing + 50, outerRadius: baseOrbitRadius + 3 * orbitSpacing + 50, segments: 34 }
+    ];
 
     const svg = d3.select("#system-map")
         .append("svg")
-        .attr("width", screenWidth)
-        .attr("height", screenHeight)
+        .attr("width", width)
+        .attr("height", height)
         .call(d3.zoom()
             .scaleExtent([0.5, 5])
             .on("zoom", zoomed));
 
+    const container = svg.append("g");
+
+    function zoomed(event) {
+        const transform = event.transform;
+        container.attr("transform", `translate(${transform.x},${transform.y}) scale(${transform.k})`);
+    }
+
+    // Zeichne die Sonne zentriert im Bildschirm
+    container.append("circle")
+        .attr("cx", centerX)
+        .attr("cy", centerY)
+        .attr("r", 40)
+        .attr("fill", "#FFD700")
+        .style("filter", "url(#glow)");
+
+    // Hinzufügen des Glow-Effekts für die Sonne
     const defs = svg.append("defs");
     const filter = defs.append("filter")
         .attr("id", "glow")
@@ -145,44 +150,46 @@ var renderSystemMap = function () {
         .append("feMergeNode")
         .attr("in", d => d);
 
-    const container = svg.append("g")
-        .attr("transform", `translate(${offsetX},${offsetY})`);
+    // Erstelle die versetzten Zonen zwischen den Umlaufbahnen
+    zones.forEach(zone => {
+        const segmentAngle = 360 / zone.segments;
 
-    function zoomed(event) {
-        const transform = event.transform;
-        container.attr("transform", `translate(${transform.x + offsetX},${transform.y + offsetY}) scale(${transform.k})`);
-    }
+        for (let i = 0; i < zone.segments; i++) {
+            const startAngle = i * segmentAngle;
+            const endAngle = startAngle + segmentAngle;
 
-    // Zeichne die Sonne
-    container.append("circle")
-        .attr("cx", centerX)
-        .attr("cy", centerY)
-        .attr("r", 40)
-        .attr("fill", "#FFD700")
-        .attr("filter", "url(#glow)");
+            const zonePath = d3.arc()
+                .innerRadius(zone.innerRadius)
+                .outerRadius(zone.outerRadius)
+                .startAngle((startAngle * Math.PI) / 180)
+                .endAngle((endAngle * Math.PI) / 180);
 
-    // Erstelle eine Gruppe für Planeten
-    const planetGroups = container.selectAll("g.planet")
-        .data(planets)
-        .enter()
-        .append("g")
-        .attr("class", "planet");
+            container.append("path")
+                .attr("d", zonePath)
+                .attr("fill", "rgba(60, 60, 60, 0.1)")
+                .attr("stroke", "rgba(60, 60, 60, 0.2)")
+                .attr("transform", `translate(${centerX}, ${centerY})`);
+        }
+    });
 
-    planetGroups.each(function(planet) {
-        planet.trail = [];
+    // Zeichne die Umlaufbahnen für die Planeten und füge den Hover-Effekt hinzu
+    planets.forEach(planet => {
+        const orbitGroup = container.append("g");
 
-        const planetGroup = d3.select(this);
-
-        // Zeichne die Umlaufbahn des Planeten
-        container.append("circle")
-            .attr("cx", centerX)
-            .attr("cy", centerY)
-            .attr("r", planet.orbitRadius)
-            .attr("fill", "none")
-            .attr("stroke", "#666")
-            .attr("stroke-dasharray", "2, 2")
-            .attr("opacity", 0.5)
-            .attr("class", "planet-orbit");
+        // Erstellen des Hover-Highlights um die Umlaufbahn
+        // const orbitHighlight = orbitGroup.append("circle")
+        //     .attr("cx", centerX)
+        //     .attr("cy", centerY)
+        //     .attr("r", planet.orbitRadius)
+        //     .attr("fill", "rgba(255, 255, 255, 0.1)")
+        //     .attr("stroke", "rgba(255, 255, 255, 0.3)")
+        //     .attr("opacity", 50)
+        //     .on("mouseover", function() {
+        //         d3.select(this).attr("opacity", 0.3);
+        //     })
+        //     .on("mouseout", function() {
+        //         d3.select(this).attr("opacity", 0);
+        //     });
 
         // Hover-Zone für Planetenumlaufbahn
         const hoverZone = container.append("circle")
@@ -190,8 +197,8 @@ var renderSystemMap = function () {
             .attr("cy", centerY)
             .attr("r", planet.orbitRadius)
             .attr("fill", "none")
-            .attr("stroke", "rgba(255, 255, 0, 0.2)")
-            .attr("stroke-width", 20)
+            .attr("stroke", "rgba(55, 55, 55, 0.5)")
+            .attr("stroke-width", 50)
             .attr("opacity", 0)
             .on("mouseover", function() {
                 d3.select(this).attr("opacity", 0.5);
@@ -202,152 +209,82 @@ var renderSystemMap = function () {
 
         planet.hoverZone = hoverZone;
 
-        // Zeichne den Planeten
-        planetGroup.append("circle")
-            .attr("class", "planet-body")
+        // Umlaufbahn des Planeten mit Hover-Effekt
+        orbitGroup.append("circle")
+            .attr("cx", centerX)
+            .attr("cy", centerY)
+            .attr("r", planet.orbitRadius)
+            .attr("fill", "none")
+            .attr("stroke", "#666")
+            .attr("stroke-dasharray", "4, 4")
+            .attr("opacity", 0.8)
+            .on("mouseover", function() {
+                // d3.select(this).attr("stroke", "#fff").attr("stroke-width", 2);
+                // planet.hoverZone.attr("opacity", 0.5);
+            })
+            .on("mouseout", function() {
+                // d3.select(this).attr("stroke", "#666").attr("stroke-width", 1);
+                // planet.hoverZone.attr("opacity", 0);
+            });
+    });
+
+    // Planeten zeichnen an festen Positionen auf den jeweiligen Umlaufbahnen
+    const planetGroups = container.selectAll("g.planet")
+        .data(planets)
+        .enter()
+        .append("g")
+        .attr("class", "planet")
+        .attr("transform", d => {
+            const x = centerX + d.orbitRadius * Math.cos(d.angle * Math.PI / 180);
+            const y = centerY + d.orbitRadius * Math.sin(d.angle * Math.PI / 180);
+            return `translate(${x}, ${y})`;
+        });
+
+    planetGroups.each(function (planet) {
+        const group = d3.select(this);
+
+        // Zeichne den Planeten mit Hover-Effekt
+        group.append("circle")
             .attr("r", planet.size)
             .attr("fill", planet.color)
             .on("mouseover", function() {
-                planet.hoverZone.attr("opacity", 0.5); // Hover-Zone bei Hover auf Planeten anzeigen
+                d3.select(this).attr("stroke", "#fff").attr("stroke-width", 2);
+                planet.hoverZone.attr("opacity", 0.5);
             })
             .on("mouseout", function() {
-                planet.hoverZone.attr("opacity", 0); // Hover-Zone bei Verlassen des Planeten ausblenden
+                d3.select(this).attr("stroke", null).attr("stroke-width", 0);
+                planet.hoverZone.attr("opacity", 0);
             });
 
-        // Schatten für Tag- und Nachtseite des Planeten
-        planetGroup.append("path")
-            .attr("class", "planet-shadow")
+        // Zeichne den Schatten für die Tag- und Nachtseite
+        const shadowAngle = -45;
+        const x1 = planet.size * Math.cos(shadowAngle * Math.PI / 180);
+        const y1 = planet.size * Math.sin(shadowAngle * Math.PI / 180);
+        const x2 = planet.size * Math.cos((shadowAngle + 180) * Math.PI / 180);
+        const y2 = planet.size * Math.sin((shadowAngle + 180) * Math.PI / 180);
+
+        group.append("path")
+            .attr("d", `M ${x1},${y1} A ${planet.size},${planet.size} 0 0,1 ${x2},${y2} L 0,0 Z`)
             .attr("fill", "rgba(0, 0, 0, 0.5)");
 
-        // Erstelle Umlaufbahnen für die Monde relativ zum Planeten
-        const moonOrbits = planetGroup.selectAll("circle.moon-orbit")
-            .data(planet.moons)
-            .enter()
-            .append("circle")
-            .attr("class", "moon-orbit")
-            .attr("fill", "none")
-            .attr("stroke", "#666")
-            .attr("stroke-dasharray", "2, 2")
-            .attr("opacity", 0.5);
+        // Monde hinzufügen
+        moons.filter(moon => moon.planetId === planet.id).forEach(moon => {
+            const moonX = moon.orbitRadius * Math.cos(moon.angle * Math.PI / 180);
+            const moonY = moon.orbitRadius * Math.sin(moon.angle * Math.PI / 180);
 
-        // Hover-Zone für Mondumlaufbahnen
-        const moonHoverZones = planetGroup.selectAll("circle.moon-hover")
-            .data(planet.moons)
-            .enter()
-            .append("circle")
-            .attr("class", "moon-hover")
-            .attr("fill", "none")
-            .attr("stroke", "rgba(0, 0, 255, 0.2)")
-            .attr("stroke-width", 10)
-            .attr("opacity", 0)
-            .on("mouseover", function(event, d) {
-                d3.select(this).attr("opacity", 0.5);
-            })
-            .on("mouseout", function(event, d) {
-                d3.select(this).attr("opacity", 0);
-            });
-
-        // Zeichne die Monde
-        planetGroup.selectAll("circle.moon")
-            .data(planet.moons)
-            .enter()
-            .append("circle")
-            .attr("class", "moon")
-            .attr("r", d => d.size)
-            .attr("fill", d => d.color)
-            .on("mouseover", function(event, moon) {
-                d3.select(this.parentNode).selectAll(".moon-hover")
-                    .filter(d => d === moon)
-                    .attr("opacity", 0.5);
-            })
-            .on("mouseout", function(event, moon) {
-                d3.select(this.parentNode).selectAll(".moon-hover")
-                    .filter(d => d === moon)
-                    .attr("opacity", 0);
-            });
-    });
-
-    // Erstelle eine Gruppe für die Flottenanzeige
-    const fleetGroup = container.selectAll("g.fleet")
-        .data(fleets)
-        .enter()
-        .append("g")
-        .attr("class", "fleet")
-        .attr("transform", d => `translate(${d.x}, ${d.y})`);
-
-    fleetGroup.each(function(fleet) {
-        const colorMap = {
-            player: "green",
-            neutral: "gray",
-            enemy: "red"
-        };
-
-        const group = d3.select(this);
-
-        // Hintergrund und Rahmen der Flottenanzeige
-        group.append("rect")
-            .attr("x", -15)
-            .attr("y", -10)
-            .attr("width", 30)
-            .attr("height", 20)
-            .attr("fill", colorMap[fleet.allegiance])
-            .attr("rx", 3)
-            .attr("ry", 3)
-            .attr("opacity", 0.2);
-
-        // Symbol und Anzahl der Schiffe
-        group.append("text")
-            .attr("x", 0)
-            .attr("y", 0)
-            .attr("dy", "0.35em")
-            .attr("fill", "white")
-            .attr("text-anchor", "middle")
-            .style("font-size", "12px")
-            .style("font-weight", "bold")
-            .text(fleet.ships);
-    });
-
-    // Funktion für die Umlaufbewegung von Planeten und Monden
-    function rotatePlanets() {
-        planetGroups.each(function(planet) {
-            planet.angle = (planet.angle || 0) + planet.speed;
-            const planetX = centerX + planet.orbitRadius * Math.cos(planet.angle * Math.PI / 180);
-            const planetY = centerY + planet.orbitRadius * Math.sin(planet.angle * Math.PI / 180);
-
-            // Aktualisiere Position des Planeten
-            d3.select(this).select(".planet-body")
-                .attr("cx", planetX)
-                .attr("cy", planetY);
-
-            // Aktualisiere die Mondumlaufbahnen relativ zum Planeten
-            d3.select(this).selectAll(".moon-orbit, .moon-hover")
-                .attr("cx", planetX)
-                .attr("cy", planetY)
-                .attr("r", d => d.orbitRadius);
-
-            // Aktualisiere die Schattenposition des Planeten
-            const shadowAngle = planet.angle - 90;
-            const x1 = planetX + planet.size * Math.cos(shadowAngle * Math.PI / 180);
-            const y1 = planetY + planet.size * Math.sin(shadowAngle * Math.PI / 180);
-            const x2 = planetX + planet.size * Math.cos((shadowAngle + 180) * Math.PI / 180);
-            const y2 = planetY + planet.size * Math.sin((shadowAngle + 180) * Math.PI / 180);
-
-            d3.select(this).select(".planet-shadow")
-                .attr("d", `M ${x1},${y1} A ${planet.size},${planet.size} 0 0,1 ${x2},${y2} L ${planetX},${planetY} Z`);
-
-            // Aktualisiere Position der Monde um den Planeten
-            d3.select(this).selectAll("circle.moon")
-                .data(planet.moons)
-                .attr("cx", d => planetX + d.orbitRadius * Math.cos((d.angle = (d.angle || 0) + d.speed) * Math.PI / 180))
-                .attr("cy", d => planetY + d.orbitRadius * Math.sin(d.angle * Math.PI / 180));
+            group.append("circle")
+                .attr("cx", moonX)
+                .attr("cy", moonY)
+                .attr("r", moon.size)
+                .attr("fill", moon.color);
         });
+    });
+};
 
-        requestAnimationFrame(rotatePlanets);
-    }
 
-    rotatePlanets();
-}
+// window.renderSystemMap = renderSystemMap;
+
 
 // make function available to other scripts
-window.renderGalaxyMap = renderGalaxyMap;
-window.renderSystemMap = renderSystemMap;
+// window.renderGalaxyMap = renderGalaxyMap;
+

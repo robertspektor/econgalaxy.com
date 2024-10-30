@@ -13,4 +13,14 @@ class Company extends Model
     {
         return $this->belongsTo(User::class);
     }
+
+//    public function employees(): \Illuminate\Database\Eloquent\Relations\HasMany
+//    {
+//        return $this->hasMany(Employee::class);
+//    }
+
+    public function fleets(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(Fleet::class);
+    }
 }

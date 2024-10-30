@@ -2,6 +2,7 @@
 
 namespace App\Livewire;
 
+use App\Events\CompanyCreated;
 use App\Models\Company;
 use App\Models\Faction;
 use App\Models\PlayerOrigin;
@@ -48,12 +49,19 @@ class StartGameHelper extends Component
             'description' => 'required|string',
         ]);
 
-        Company::create([
+        $company = Company::create([
             'name' => $this->name,
             'description' => $this->description,
             'user_id' => auth()->id(),
         ]);
 
+        // save player origin
+        auth()->user()->update([
+            'player_origin_id' => $this->selected_player_origin,
+        ]);
+
         $this->welcomeModal = false;
+
+        CompanyCreated::dispatch($company->id);
     }
 }

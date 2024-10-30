@@ -12,3 +12,5 @@ window.axios.defaults.headers.common['X-Requested-With'] = 'XMLHttpRequest';
 
 import './echo';
 import './d3';
+import './systemmap.js';
+import './galaxymap.js';

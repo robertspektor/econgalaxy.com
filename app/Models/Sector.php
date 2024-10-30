@@ -9,8 +9,12 @@ class Sector extends Model
     protected $guarded = [
     ];
 
-    public function faction(): \Illuminate\Database\Eloquent\Relations\BelongsTo
-    {
-        return $this->belongsTo(Faction::class);
+    public function system() {
+        return $this->belongsTo(System::class);
     }
+
+//    public function faction(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+//    {
+//        return $this->belongsTo(Faction::class);
+//    }
 }

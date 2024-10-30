@@ -21,6 +21,7 @@ class User extends Authenticatable
         'username',
         'email',
         'password',
+        'player_origin_id'
     ];
 
     /**
@@ -49,5 +50,10 @@ class User extends Authenticatable
     public function company(): \Illuminate\Database\Eloquent\Relations\HasOne
     {
         return $this->hasOne(Company::class);
+    }
+
+    public function playerOrigin(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    {
+        return $this->belongsTo(PlayerOrigin::class);
     }
 }

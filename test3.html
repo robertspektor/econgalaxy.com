@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Schematische Raumschiff-Darstellung</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #0f1e1e;
+            font-family: Arial, sans-serif;
+            color: #ffffff;
+        }
+        .module {
+            fill: #333;
+            stroke: #888;
+            stroke-width: 1.5;
+        }
+        .energy-symbol {
+            fill: orange;
+        }
+        .outline {
+            stroke: orange;
+            stroke-width: 2;
+            fill: none;
+        }
+        .grid-line {
+            stroke: #333;
+            stroke-width: 0.5;
+        }
+        .energy-box {
+            fill: orange;
+            rx: 4;
+            ry: 4;
+        }
+    </style>
+</head>
+<body>
+
+<svg id="spaceship" width="600" height="600"></svg>
+
+<script>
+    // Hintergrundraster
+    const svg = d3.select("#spaceship");
+    for (let i = 0; i < 600; i += 40) {
+        svg.append("line")
+            .attr("x1", i)
+            .attr("y1", 0)
+            .attr("x2", i)
+            .attr("y2", 600)
+            .attr("class", "grid-line");
+        svg.append("line")
+            .attr("x1", 0)
+            .attr("y1", i)
+            .attr("x2", 600)
+            .attr("y2", i)
+            .attr("class", "grid-line");
+    }
+
+    // Außenstruktur des Raumschiffs
+    svg.append("path")
+        .attr("d", "M 150 100 Q 300 0, 450 100 L 450 500 Q 300 600, 150 500 Z")
+        .attr("class", "outline");
+
+    // Innerer Hauptkreis (zentrale Struktur)
+    svg.append("circle")
+        .attr("cx", 300)
+        .attr("cy", 300)
+        .attr("r", 120)
+        .attr("class", "outline");
+
+    // Sektionen im inneren Kreis
+    for (let i = 0; i < 360; i += 45) {
+        const angle = (i * Math.PI) / 180;
+        const x = 300 + 120 * Math.cos(angle);
+        const y = 300 + 120 * Math.sin(angle);
+        svg.append("line")
+            .attr("x1", 300)
+            .attr("y1", 300)
+            .attr("x2", x)
+            .attr("y2", y)
+            .attr("class", "outline");
+    }
+
+    // Energie-Symbole in den Segmenten
+    function createEnergySymbol(x, y) {
+        svg.append("rect")
+            .attr("x", x - 10)
+            .attr("y", y - 10)
+            .attr("width", 20)
+            .attr("height", 20)
+            .attr("class", "energy-box");
+        svg.append("text")
+            .attr("x", x)
+            .attr("y", y + 5)
+            .attr("text-anchor", "middle")
+            .attr("class", "energy-symbol")
+            .attr("font-size", "14px")
+            .attr("font-weight", "bold")
+            .text("⚡");
+    }
+
+    // Platzierung der Energie-Symbole
+    createEnergySymbol(240, 200);
+    createEnergySymbol(360, 200);
+    createEnergySymbol(240, 400);
+    createEnergySymbol(360, 400);
+    createEnergySymbol(300, 150);
+    createEnergySymbol(300, 450);
+
+    // Obere technische Einheit
+    svg.append("rect")
+        .attr("x", 275)
+        .attr("y", 50)
+        .attr("width", 50)
+        .attr("height", 40)
+        .attr("class", "module");
+
+    svg.append("line")
+        .attr("x1", 300)
+        .attr("y1", 100)
+        .attr("x2", 300)
+        .attr("y2", 180)
+        .attr("class", "outline");
+
+</script>
+
+</body>
+</html>

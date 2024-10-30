@@ -1,0 +1,22 @@
+[
+    { "id": 1, "name": "Arcturus" },
+    { "id": 2, "name": "Capella" },
+    { "id": 3, "name": "Vega" },
+    { "id": 4, "name": "Altair" },
+    { "id": 5, "name": "Procyon" },
+    { "id": 6, "name": "Rigel" },
+    { "id": 7, "name": "Fomalhaut" },
+    { "id": 8, "name": "Betelgeuse" },
+    { "id": 9, "name": "Aldebaran" },
+    { "id": 10, "name": "Bellatrix" },
+    { "id": 11, "name": "Deneb" },
+    { "id": 12, "name": "Antares" },
+    { "id": 13, "name": "Sirius" },
+    { "id": 14, "name": "Pollux" },
+    { "id": 15, "name": "Castor" },
+    { "id": 16, "name": "Spica" },
+    { "id": 17, "name": "Mira" },
+    { "id": 18, "name": "Canopus" },
+    { "id": 19, "name": "Alpheratz" },
+    { "id": 20, "name": "Algol" }
+]
