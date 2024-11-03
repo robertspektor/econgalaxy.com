@@ -16,7 +16,7 @@ class CreateSystemCommand extends Command
      *
      * @var string
      */
-    protected $signature = 'app:create-system-command';
+    protected $signature = 'app:create-system-command {--truncate}';
 
     /**
      * The console command description.
@@ -30,7 +30,9 @@ class CreateSystemCommand extends Command
      */
     public function handle()
     {
-        $this->truncate();
+        if ($this->option('truncate')) {
+            $this->truncate();
+        }
 
         // create new System
         $system = new System();
@@ -39,6 +41,39 @@ class CreateSystemCommand extends Command
         $systemNames = collect(json_decode(file_get_contents(base_path('system_names.json')), true));
 
         $system->name = $systemNames->random()['name'];
+
+        // check if system name already exists
+        while (System::where('name', $system->name)->exists()) {
+            $system->name = $systemNames->random()['name'];
+        }
+
+        $system->x = rand(0, 1000);
+        $system->y = rand(0, 1000);
+
+        // check if system already near another system
+        $nearbySystems = System::whereBetween('x', [$system->x - 100, $system->x + 100])
+            ->whereBetween('y', [$system->y - 100, $system->y + 100])
+            ->exists();
+
+        while ($nearbySystems) {
+            $system->x = rand(0, 1000);
+            $system->y = rand(0, 1000);
+            $nearbySystems = System::whereBetween('x', [$system->x - 100, $system->x + 100])
+                ->whereBetween('y', [$system->y - 100, $system->y + 100])
+                ->exists();
+        }
+
+        // realistic star color
+        $system->color = collect([
+            '#87CEEB',
+            '#B0C4DE',
+            '#FFFFFF',
+            '#FFFACD',
+            '#FFD700',
+            '#FFA500',
+            '#FF6347',
+        ])->random();
+
         $system->num_planets = rand(1, 5);
 
         $system->save();

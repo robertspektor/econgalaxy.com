@@ -9,7 +9,7 @@
 
         <div class="w-full overflow-hidden">
 
-            <livewire:maps.sector-map />
+{{--            <livewire:maps.sector-map />--}}
         </div>
     </div>
 </x-app-layout>

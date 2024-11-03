@@ -4,8 +4,14 @@
 
 <script>
 
+    const systems = @json($systems);
+
+    const fleets = @json($fleets);
+
+    const spaceports = @json($spaceports);
+
     document.addEventListener('livewire:navigated', function () {
-        renderGalaxyMap();
+        renderGalaxyMap(systems, fleets, spaceports);
     });
 
 </script>
