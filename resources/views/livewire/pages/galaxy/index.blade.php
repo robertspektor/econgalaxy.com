@@ -1,3 +1,3 @@
-<div class="pt-40 pl-20">
+<div class="">
     <livewire:maps.galaxy-map />
 </div>

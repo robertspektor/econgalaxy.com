@@ -10,8 +10,15 @@
 
     const spaceports = @json($spaceports);
 
+    const positions = @json([
+        'gridX' => 1000,
+        'gridY' => 1000,
+    ]);
+
     document.addEventListener('livewire:navigated', function () {
-        renderGalaxyMap(systems, fleets, spaceports);
+        renderGalaxyMap(positions);
+        // renderSchematicGalaxyMap(systems, fleets, spaceports);
+        // renderDynamicGalaxyMap(positions);
     });
 
 </script>

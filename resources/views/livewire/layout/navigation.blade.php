@@ -56,24 +56,24 @@ new class extends Component
                 <ul class="flex flex-col items-center space-y-1">
                     <!-- Item -->
                     <li class="hs-tooltip [--placement:right] inline-block">
-                        <x-responsive-nav-link :href="route('dashboard')" :active="request()->routeIs('dashboard')" wire:navigate>
+                        <x-responsive-nav-link :href="route('os')" :active="request()->routeIs('os')" wire:navigate>
                             <svg class="shrink-0 mt-0.5 size-4" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                                 <path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
                                 <polyline points="9 22 9 12 15 12 15 22" />
                             </svg>
-                            <span class="sr-only">Dashboard</span>
+                            <span class="sr-only">Nebula OS</span>
                         </x-responsive-nav-link>
                     </li>
                     <!-- End Item -->
 
                     <!-- Item -->
                     <li class="hs-tooltip [--placement:right] inline-block">
-                        <x-responsive-nav-link :href="route('dashboard')" :active="request()->routeIs('markets')" wire:navigate>
-                            <svg class="shrink-0 mt-0.5 size-4" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                <path d="M12 16v5"/><path d="M16 14v7"/><path d="M20 10v11"/><path d="m22 3-8.646 8.646a.5.5 0 0 1-.708 0L9.354 8.354a.5.5 0 0 0-.707 0L2 15"/><path d="M4 18v3"/><path d="M8 14v7"/>
-                            </svg>
-                            <span class="sr-only">Markets</span>
-                        </x-responsive-nav-link>
+{{--                        <x-responsive-nav-link :href="route('dashboard')" :active="request()->routeIs('markets')" wire:navigate>--}}
+{{--                            <svg class="shrink-0 mt-0.5 size-4" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">--}}
+{{--                                <path d="M12 16v5"/><path d="M16 14v7"/><path d="M20 10v11"/><path d="m22 3-8.646 8.646a.5.5 0 0 1-.708 0L9.354 8.354a.5.5 0 0 0-.707 0L2 15"/><path d="M4 18v3"/><path d="M8 14v7"/>--}}
+{{--                            </svg>--}}
+{{--                            <span class="sr-only">Markets</span>--}}
+{{--                        </x-responsive-nav-link>--}}
                     </li>
                     <!-- End Item -->
 

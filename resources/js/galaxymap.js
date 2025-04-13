@@ -1,147 +1,138 @@
 import * as d3 from "d3";
 
-const renderGalaxyMap = (systems, fleets, spaceports) => {
+const renderGalaxyMap = (initialCenter = { gridX: 0, gridY: 0 }) => {
+    const width = window.innerWidth;
+    const height = window.innerHeight;
+    const hexRadius = 35;
+    const outerMargin = 2;
+    const gridSize = 4;
+
     const svg = d3.select("#galaxy-map")
         .append("svg")
-        .attr("width", window.innerWidth)
-        .attr("height", window.innerHeight);
+        .attr("width", width)
+        .attr("height", height)
+        .call(d3.zoom().scaleExtent([0.5, 3]).on("zoom", zoomed))
+        .append("g");
 
-    addGlowEffect(svg);
-
-    // Container für die Hauptkarte
     const container = svg.append("g");
 
-    // Darstellung der Systeme, Flotten und Spaceports
-    drawSystems(container, systems);
-    drawFleets(container, fleets, systems);
-    drawSpaceports(container, spaceports);
+    const factionData = [
+        { gridX: 0, gridY: 0, bgColor: "132320", borderColor: "598578" },
+        { gridX: 1, gridY: 1, bgColor: "3c1361", borderColor: "5e60ce" },
+        { gridX: -1, gridY: -1, bgColor: "452c2c", borderColor: "a33f1f" }
+    ];
+
+    const systemData = [
+        { id: 1, name: "System A", gridX: 0, gridY: 0 },
+        { id: 2, name: "System B", gridX: 1, gridY: 1 },
+        { id: 3, name: "System C", gridX: -1, gridY: -1 }
+    ];
+
+    const hexGridData = generateHexGridData(gridSize, hexRadius, outerMargin, factionData, systemData, initialCenter);
+    drawHexGrid(container, hexGridData, hexRadius, outerMargin, { x: width / 2, y: height / 2 });
+
+    function zoomed(event) {
+        container.attr("transform", event.transform);
+    }
 };
 
-const drawSystems = (container, systems) => {
-    systems.forEach(system => {
-        // Hintergrundkreis für den "Stern-Effekt" und Glow
-        container.append("circle")
-            .attr("cx", system.x)
-            .attr("cy", system.y)
-            .attr("r", 6) // Kleinere Darstellung für den "Stern-Effekt"
-            .attr("fill", "orange")
-            .style("filter", "url(#glow)");
+// Generiere Hexagon-Grid-Daten mit einer zentralen hexagonalen Struktur
+const generateHexGridData = (gridSize, hexRadius, outerMargin, factions, systems, center) => {
+    const hexGridData = [];
+    const factionMap = new Map(factions.map(f => [`${f.gridX},${f.gridY}`, f]));
+    const systemMap = new Map(systems.map(s => [`${s.gridX},${s.gridY}`, s]));
 
-        // Heller Punkt im Inneren für den Sternen-Effekt
-        container.append("circle")
-            .attr("cx", system.x)
-            .attr("cy", system.y)
-            .attr("r", 1.5)
-            .attr("fill", "white");
+    for (let q = -gridSize; q <= gridSize; q++) {
+        for (let r = Math.max(-gridSize, -q - gridSize); r <= Math.min(gridSize, -q + gridSize); r++) {
+            const gridX = q + center.gridX;
+            const gridY = r + center.gridY;
 
-        // Systemname neben dem Punkt
-        container.append("text")
-            .attr("x", system.x + 16) // Position leicht rechts des Systems
-            .attr("y", system.y + 4)  // Anpassung für vertikales zentrieren
-            .attr("fill", "white")
-            .attr("font-size", "13px")
-            .text(system.name);
+            const faction = factionMap.get(`${gridX},${gridY}`);
+            const system = systemMap.get(`${gridX},${gridY}`);
 
-        // Hover-Zone für das System
-        container.append("circle")
-            .attr("cx", system.x)
-            .attr("cy", system.y)
-            .attr("r", 20) // Größere Zone für das Hover
-            .attr("fill", "rgba(100, 100, 100, 0)")
-            .attr("class", `hover-zone-${system.id}`)
-            .on("mouseover", () => highlightSystem(system.id))
-            .on("mouseout", () => resetSystemHighlight(system.id));
-    });
-};
+            hexGridData.push({
+                gridX,
+                gridY,
+                bgColor: faction ? `#${faction.bgColor}` : "#222",
+                borderColor: faction ? `#${faction.borderColor}` : "#333",
+                system: system || null
+            });
 
-// Funktion für den Glow-Effekt
-const addGlowEffect = svg => {
-    const filter = svg.append("defs").append("filter")
-        .attr("id", "glow");
-
-    filter.append("feGaussianBlur")
-        .attr("stdDeviation", "3.5")
-        .attr("result", "coloredBlur");
-
-    filter.append("feMerge").selectAll("feMergeNode")
-        .data(["coloredBlur", "SourceGraphic"])
-        .enter()
-        .append("feMergeNode")
-        .attr("in", d => d);
-};
-
-const highlightSystem = (systemId) => {
-    d3.select(`.hover-zone-${systemId}`)
-        .attr("fill", "rgba(255, 255, 255, 0.3)");
-};
-
-const resetSystemHighlight = (systemId) => {
-    d3.select(`.hover-zone-${systemId}`)
-        .attr("fill", "rgba(100, 100, 100, 0)");
-};
-
-const calculateProgress = (departureTime, arrivalTime) => {
-    const now = Date.now();
-    const departure = new Date(departureTime).getTime();
-    const arrival = new Date(arrivalTime).getTime();
-
-    return Math.min(1, Math.max(0, (now - departure) / (arrival - departure)));
-};
-
-const drawFleets = (container, fleets, systems) => {
-    fleets.forEach(fleet => {
-        if (fleet.status === "moving") {
-            const system = systems.find(system => system.id === fleet.system_id);
-            const { x: startX, y: startY } = system;
-            const { x: endX, y: endY } = system;
-
-            // Linie für die Route
-            container.append("line")
-                .attr("x1", startX)
-                .attr("y1", startY)
-                .attr("x2", endX)
-                .attr("y2", endY)
-                .attr("stroke", "blue")
-                .attr("stroke-width", 1)
-                .attr("stroke-dasharray", "4,4");
-
-            // Dreieck für die Flotte
-            const fleetGroup = container.append("g")
-                .attr("transform", `translate(${startX}, ${startY})`);
-
-            fleetGroup.append("polygon")
-                .attr("points", "-5,5 5,5 0,-5")
-                .attr("fill", "green");
-
-            // Animation zur Bewegung des Dreiecks entlang der Route
-            animateFleet(fleetGroup, startX, startY, endX, endY, fleet);
+            console.log(`Adding tile at grid position (${gridX}, ${gridY})`);
         }
+    }
+    return hexGridData;
+};
+
+// Hexagon-Grid mit Außenabstand und Rand zeichnen
+const drawHexGrid = (container, hexGridData, hexRadius, outerMargin, centerPosition) => {
+    hexGridData.forEach(cell => {
+        const { x, y } = calculateHexPosition(cell.gridX, cell.gridY, hexRadius + outerMargin, centerPosition);
+
+        console.log(`Drawing tile at screen position (${x}, ${y}) for grid position (${cell.gridX}, ${cell.gridY})`);
+
+        container.append("path")
+            .attr("d", hexagonPath(hexRadius))
+            .attr("transform", `translate(${x},${y})`)
+            .attr("stroke", cell.borderColor)
+            .attr("stroke-width", 1.5)
+            .attr("fill", cell.bgColor)
+            .on("mouseover", function() {
+                const hoverColor = d3.color(cell.bgColor).darker(0.5);
+                d3.select(this).attr("fill", hoverColor);
+            })
+            .on("mouseout", function() {
+                d3.select(this).attr("fill", cell.bgColor);
+            });
+
+        if (cell.system) {
+            container.append("circle")
+                .attr("cx", x)
+                .attr("cy", y - 5)
+                .attr("r", 5)
+                .attr("fill", cell.borderColor);
+
+            container.append("text")
+                .attr("x", x)
+                .attr("y", y + 10)
+                .attr("fill", cell.borderColor)
+                .attr("font-size", "10px")
+                .attr("text-anchor", "middle")
+                .attr("font-weight", "bold")
+                .text(cell.system.name);
+        }
+
+        container.append("text")
+            .attr("x", x)
+            .attr("y", y + 20)
+            .attr("fill", "white")
+            .attr("font-size", "8px")
+            .attr("text-anchor", "middle")
+            .text(`(${cell.gridX}, ${cell.gridY})`);
     });
 };
 
-// Animationsfunktion für die Flotte
-const animateFleet = (fleetGroup, startX, startY, endX, endY, fleet) => {
-    const totalDistance = Math.sqrt(Math.pow(endX - startX, 2) + Math.pow(endY - startY, 2));
-    d3.timer(function(elapsed) {
-        const progress = calculateProgress(fleet.departure_time, fleet.arrival_time);
-        const x = startX + (endX - startX) * progress;
-        const y = startY + (endY - startY) * progress;
+// Berechnung der Hexagon-Position unter Berücksichtigung des Außenabstands
+const calculateHexPosition = (gridX, gridY, hexRadiusWithMargin, centerPosition) => {
+    console.log(`Calculating position for grid (${gridX}, ${gridY})`);
 
-        fleetGroup.attr("transform", `translate(${x}, ${y})`);
+    const x = centerPosition.x + gridX * (hexRadiusWithMargin * 1.5);
+    const y = centerPosition.y + gridY * (hexRadiusWithMargin * Math.sqrt(3)) + (gridX % 2 === 0 ? 0 : hexRadiusWithMargin * Math.sqrt(3) / 2);
 
-        if (progress >= 1) return true; // Stop animation
-    });
+    console.log(`Screen Position: (${x}, ${y}) for Grid Position: (${gridX}, ${gridY})`);
+    return { x, y };
 };
 
-const drawSpaceports = (container, spaceports) => {
-    spaceports.forEach(port => {
-        container.append("rect")
-            .attr("x", port.system.x - 8) // Links des Systems
-            .attr("y", port.system.y - 5) // Vertikal zentriert zum System
-            .attr("width", 5)
-            .attr("height", 5)
-            .attr("fill", "blue");
-    });
+// Hexagon-Pfad für ein regelmäßiges Sechseck
+const hexagonPath = radius => {
+    const angle = Math.PI / 3;
+    let path = "";
+    for (let i = 0; i < 6; i++) {
+        const x = radius * Math.cos(angle * i);
+        const y = radius * Math.sin(angle * i);
+        path += `${i === 0 ? "M" : "L"}${x},${y}`;
+    }
+    return path + "Z";
 };
 
 window.renderGalaxyMap = renderGalaxyMap;

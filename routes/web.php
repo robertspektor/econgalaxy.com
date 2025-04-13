@@ -1,27 +1,34 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
+use App\Livewire\BootScreen;
+use App\Livewire\OperatingSystem;
+use App\Livewire\Pages\System\ShowSystemPage;
+use App\Livewire\Pages\Galaxy\Index as GalaxyIndex;
 
 Route::view('/', 'welcome');
 
-Route::view('dashboard', 'dashboard')
-    ->middleware(['auth', 'verified'])
-    ->name('dashboard');
+Route::middleware(['auth', 'verified'])
+    ->group(function () {
+        // Boot-Screen nach dem Login
+        Route::get('/boot', BootScreen::class)
+            ->name('boot');
 
-//Route::get('sectors/{sector}', \App\Livewire\Pages\ShowSectorPage::class)
-//    ->middleware(['auth'])
-//    ->name('sectors.show');
+        // Haupt-OS-Seite
+        Route::get('/os', OperatingSystem::class)
+            ->name('os');
 
-Route::get('systems/{system}', \App\Livewire\Pages\System\ShowSystemPage::class)
-    ->middleware(['auth'])
-    ->name('systems.show');
+        // System-Details
+        Route::get('systems/{system}', ShowSystemPage::class)
+            ->name('systems.show');
 
-Route::get('galaxy', \App\Livewire\Pages\Galaxy\Index::class)
-    ->middleware(['auth'])
-    ->name('galaxy.index');
+        // Galaxy-Übersicht
+        Route::get('galaxy', GalaxyIndex::class)
+            ->name('galaxy.index');
 
-Route::view('profile', 'profile')
-    ->middleware(['auth'])
-    ->name('profile');
+        // Profil-Seite
+        Route::view('profile', 'profile')
+            ->name('profile');
+    });
 
-require __DIR__.'/auth.php';
+require __DIR__ . '/auth.php';

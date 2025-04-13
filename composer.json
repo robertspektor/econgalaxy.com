@@ -6,14 +6,11 @@
     "license": "MIT",
     "require": {
         "php": "^8.2",
-        "laravel/framework": "^11.9",
-        "laravel/pulse": "^1.2",
-        "laravel/reverb": "^1.0",
+        "laravel/framework": "^12.0",
         "laravel/tinker": "^2.9",
-        "livewire/flux": "^1.0",
-        "livewire/flux-pro": "^1.0",
-        "livewire/livewire": "^3.4",
-        "livewire/volt": "^1.0"
+        "livewire/livewire": "^3.6",
+        "livewire/volt": "^1.7",
+        "robsontenorio/mary": "^2.2"
     },
     "require-dev": {
         "fakerphp/faker": "^1.23",
