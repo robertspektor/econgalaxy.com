@@ -1,6 +1,149 @@
-import * as d3 from 'd3';
+import * as d3 from "d3";
 
-const renderSystemMap = (system, sectors, planets, moons, fleets) => {
+// Generiere Hexagon-Grid-Daten mit einer zentralen hexagonalen Struktur (for Galaxy Map)
+const generateHexGridData = (gridSize, hexRadius, outerMargin, factions, systems, center) => {
+    const hexGridData = [];
+    const factionMap = new Map(factions.map(f => [`${f.gridX},${f.gridY}`, f]));
+    const systemMap = new Map(systems.map(s => [`${s.gridX},${s.gridY}`, s]));
+
+    for (let q = -gridSize; q <= gridSize; q++) {
+        for (let r = Math.max(-gridSize, -q - gridSize); r <= Math.min(gridSize, -q + gridSize); r++) {
+            const gridX = q + center.gridX;
+            const gridY = r + center.gridY;
+
+            const faction = factionMap.get(`${gridX},${gridY}`);
+            const system = systemMap.get(`${gridX},${gridY}`);
+
+            hexGridData.push({
+                gridX,
+                gridY,
+                bgColor: faction ? `#${faction.bgColor}` : "#222",
+                borderColor: faction ? `#${faction.borderColor}` : "#333",
+                system: system || null
+            });
+
+            console.log(`Adding tile at grid position (${gridX}, ${gridY})`);
+        }
+    }
+    return hexGridData;
+};
+
+// Berechnung der Hexagon-Position unter Berücksichtigung des Außenabstands
+const calculateHexPosition = (gridX, gridY, hexRadiusWithMargin, centerPosition) => {
+    console.log(`Calculating position for grid (${gridX}, ${gridY})`);
+
+    const x = centerPosition.x + gridX * (hexRadiusWithMargin * 1.5);
+    const y = centerPosition.y + gridY * (hexRadiusWithMargin * Math.sqrt(3)) + (gridX % 2 === 0 ? 0 : hexRadiusWithMargin * Math.sqrt(3) / 2);
+
+    console.log(`Screen Position: (${x}, ${y}) for Grid Position: (${gridX}, ${gridY})`);
+    return { x, y };
+};
+
+// Hexagon-Pfad für ein regelmäßiges Sechseck
+const hexagonPath = radius => {
+    const angle = Math.PI / 3;
+    let path = "";
+    for (let i = 0; i < 6; i++) {
+        const x = radius * Math.cos(angle * i);
+        const y = radius * Math.sin(angle * i);
+        path += `${i === 0 ? "M" : "L"}${x},${y}`;
+    }
+    return path + "Z";
+};
+
+// Render the Galaxy Map
+export const renderGalaxyMap = (initialCenter = { gridX: 0, gridY: 0 }) => {
+    const width = window.innerWidth;
+    const height = window.innerHeight;
+    const hexRadius = 35;
+    const outerMargin = 2;
+    const gridSize = 4;
+
+    // Clear any existing SVG content
+    d3.select("#galaxy-map").selectAll("*").remove();
+
+    const svg = d3.select("#galaxy-map")
+        .append("svg")
+        .attr("width", width)
+        .attr("height", height)
+        .call(d3.zoom().scaleExtent([0.5, 3]).on("zoom", zoomed))
+        .append("g");
+
+    const container = svg.append("g");
+
+    const factionData = [
+        { gridX: 0, gridY: 0, bgColor: "132320", borderColor: "598578" },
+        { gridX: 1, gridY: 1, bgColor: "3c1361", borderColor: "5e60ce" },
+        { gridX: -1, gridY: -1, bgColor: "452c2c", borderColor: "a33f1f" }
+    ];
+
+    // Use the global window.systems variable set by the Livewire component
+    const systemData = window.systems || [];
+
+    const hexGridData = generateHexGridData(gridSize, hexRadius, outerMargin, factionData, systemData, initialCenter);
+    drawHexGrid(container, hexGridData, hexRadius, outerMargin, { x: width / 2, y: height / 2 });
+
+    function zoomed(event) {
+        container.attr("transform", event.transform);
+    }
+};
+
+// Draw the Hex Grid (for Galaxy Map)
+const drawHexGrid = (container, hexGridData, hexRadius, outerMargin, centerPosition) => {
+    hexGridData.forEach(cell => {
+        const { x, y } = calculateHexPosition(cell.gridX, cell.gridY, hexRadius + outerMargin, centerPosition);
+
+        console.log(`Drawing tile at screen position (${x}, ${y}) for grid position (${cell.gridX}, ${cell.gridY})`);
+
+        container.append("path")
+            .attr("d", hexagonPath(hexRadius))
+            .attr("transform", `translate(${x},${y})`)
+            .attr("stroke", cell.borderColor)
+            .attr("stroke-width", 1.5)
+            .attr("fill", cell.bgColor)
+            .on("mouseover", function() {
+                const hoverColor = d3.color(cell.bgColor).darker(0.5);
+                d3.select(this).attr("fill", hoverColor);
+            })
+            .on("mouseout", function() {
+                d3.select(this).attr("fill", cell.bgColor);
+            });
+
+        if (cell.system) {
+            container.append("circle")
+                .attr("cx", x)
+                .attr("cy", y - 5)
+                .attr("r", 5)
+                .attr("fill", cell.borderColor)
+                .on("click", function() {
+                    // Dispatch a Livewire event to switch to the system view
+                    window.Livewire.dispatch('switchToSystem', { systemId: cell.system.id });
+                });
+
+            container.append("text")
+                .attr("x", x)
+                .attr("y", y + 10)
+                .attr("fill", cell.borderColor)
+                .attr("font-size", "10px")
+                .attr("text-anchor", "middle")
+                .attr("font-weight", "bold")
+                .text(cell.system.name);
+        }
+
+        container.append("text")
+            .attr("x", x)
+            .attr("y", y + 20)
+            .attr("fill", "white")
+            .attr("font-size", "8px")
+            .attr("text-anchor", "middle")
+            .text(`(${cell.gridX}, ${cell.gridY})`);
+    });
+};
+
+// Render the System Map
+export const renderSystemMap = (system, sectors, planets, moons, fleets) => {
+    // Clear any existing SVG content
+    d3.select("#system-map").selectAll("*").remove();
 
     const dimensions = calculateDimensions();
     const baseOrbitRadius = 100;
@@ -8,60 +151,28 @@ const renderSystemMap = (system, sectors, planets, moons, fleets) => {
 
     const svg = initializeSvg(dimensions.width, dimensions.height);
 
-    // Hintergrundbild mit Parallax-Effekt einfügen, zuerst im SVG hinzufügen, damit es im Hintergrund ist
+    // Hintergrundbild mit Parallax-Effekt einfügen
     const backgroundContainer = svg.append("g");
-    addParallaxBackground(backgroundContainer, dimensions, backgroundContainer);
+    addParallaxBackground(backgroundContainer, dimensions);
 
     const container = svg.append("g");
 
     const centerX = dimensions.width / 2;
     const centerY = dimensions.height / 2;
 
-
-    // const planets = [
-    //     { id: 1, name: 'Planet A', size: 10, color: "#B0BEC5", orbitRadius: baseOrbitRadius + orbitSpacing, angle: 0 },
-    //     { id: 2, name: 'Planet B', size: 15, color: "#ECEFF1", orbitRadius: baseOrbitRadius + orbitSpacing * 2, angle: 45 },
-    //     { id: 3, name: 'Planet C', size: 12, color: "#FFB6C1", orbitRadius: baseOrbitRadius + orbitSpacing * 3, angle: 90 }
-    // ];
-
-    // const moons = [
-    //     { id: 1, planet_id: 1, name: 'Moon A1', size: 4, color: "#A4A4A4", orbitRadius: 20, angle: 90 },
-    //     { id: 2, planet_id: 2, name: 'Moon B1', size: 3, color: "#CCCCCC", orbitRadius: 25, angle: 180 },
-    //     { id: 3, planet_id: 3, name: 'Moon C1', size: 5, color: "#AAAAAA", orbitRadius: 30, angle: 270 }
-    // ];
-
-    // const zones = [
-    //     { innerRadius: baseOrbitRadius + 50, outerRadius: baseOrbitRadius + orbitSpacing + 50, segments: 18 },
-    //     { innerRadius: baseOrbitRadius + orbitSpacing + 50, outerRadius: baseOrbitRadius + orbitSpacing * 2 + 50, segments: 18 },
-    //     { innerRadius: baseOrbitRadius + orbitSpacing * 2 + 50, outerRadius: baseOrbitRadius + orbitSpacing * 3 + 50, segments: 18 }
-    // ];
-
-
-
-// Beispiel-Aufruf
-//     const fleets = [
-        // { id: 1, zoneId: 0, segmentIndex: 0, size: 5, isFriendly: true },
-        // { id: 2, zoneId: 1, segmentIndex: 4, size: 10, isFriendly: false },
-        // { id: 3, zoneId: 2, segmentIndex: 8, size: 15, isFriendly: true }
-    // ];
-
-
-// Beispiel-Flotten, die in verschiedenen Zonen und Segmenten starten
-//     const fleets = [
-//         { id: 1, zoneId: 'Z1S15', size: 10, isFriendly: true },
-//         { id: 2, zoneId: 'Z2S10', size: 20, isFriendly: false },
-//         { id: 3, zoneId: 'Z3S5', size: 15, isFriendly: true }
-//     ];
-
     addSun(container, centerX, centerY);
     addGlowEffect(svg);
-    // drawZones(container, zones, centerX, centerY);
     drawSectors(container, sectors, centerX, centerY);
     drawOrbits(container, planets, centerX, centerY);
     drawPlanets(container, planets, moons, centerX, centerY);
-    // drawFleets(container, fleets, zones, centerX, centerY);
     drawFleets(container, fleets, sectors, centerX, centerY);
 
+    // Add zoom and pan functionality
+    svg.call(d3.zoom().scaleExtent([0.5, 3]).on("zoom", zoomed));
+
+    function zoomed(event) {
+        container.attr("transform", event.transform);
+    }
 };
 
 const initializeSvg = (width, height) => {
@@ -70,31 +181,19 @@ const initializeSvg = (width, height) => {
         .attr("width", width)
         .attr("height", height);
 };
-const addParallaxBackground = (backgroundContainer, dimensions) => {
 
-    // cover
+const addParallaxBackground = (backgroundContainer, dimensions) => {
     backgroundContainer.append("image")
         .attr("href", "/images/bg-stars.jpg")
         .attr("width", dimensions.width)
-        // .attr("height", dimensions.height)
         .attr("x", 0)
         .attr("y", 0);
 };
-
 
 const calculateDimensions = () => {
     const width = window.innerWidth;
     const height = window.innerHeight;
     return { width, height, centerX: width / 2, centerY: height / 2 };
-};
-
-const adjustZoneSegments = (zones) => {
-    const baseArea = Math.PI * (zones[0].outerRadius ** 2 - zones[0].innerRadius ** 2);
-    zones.forEach((zone, index) => {
-        if (index === 0) return;
-        const zoneArea = Math.PI * (zone.outerRadius ** 2 - zone.innerRadius ** 2);
-        zone.segments = Math.round(zones[0].segments * (zoneArea / baseArea));
-    });
 };
 
 const addSun = (container, x, y) => {
@@ -121,74 +220,11 @@ const addGlowEffect = (svg) => {
         .attr("in", d => d);
 };
 
-// Anpassungen für die `drawZones` Methode, um das Hover-Verhalten korrekt zu steuern
-const drawZones = (container, zones, centerX, centerY) => {
-    adjustZoneSegments(zones);
-
-    zones.forEach((zone, zoneIndex) => {
-        const segmentAngle = 360 / zone.segments;
-
-        // Berechne den Radius-Mittelpunkt des Zonenrings für die Flottenpositionen
-        const radius = (zone.innerRadius + zone.outerRadius) / 2;
-
-        for (let i = 0; i < zone.segments; i++) {
-            const startAngle = i * segmentAngle;
-            const midAngle = startAngle + segmentAngle / 2; // Berechne den Mittelwinkel des Segments
-            const endAngle = startAngle + segmentAngle;
-
-            // Positioniere das Text-Label in der Mitte des Segments
-            const textX = centerX + radius * Math.cos((midAngle - 90) * (Math.PI / 180));
-            const textY = centerY + radius * Math.sin((midAngle - 90) * (Math.PI / 180));
-
-            // Erstelle den Segmentpfad für das aktuelle Segment
-            const arcPath = d3.arc()
-                .innerRadius(zone.innerRadius)
-                .outerRadius(zone.outerRadius)
-                .startAngle((startAngle * Math.PI) / 180)
-                .endAngle((endAngle * Math.PI) / 180);
-
-            // Definiere den eindeutigen Segmentbezeichner `Z{zoneIndex + 1}S{i + 1}`
-            const segmentLabel = `Z${zoneIndex + 1}S${i + 1}`;
-
-            // Füge den Segmentbogen zum SVG hinzu
-            container.append("path")
-                .attr("d", arcPath)
-                .attr("fill", "rgba(60, 60, 60, 0.2)")
-                .attr("stroke", "rgba(60, 60, 60, 0.3)")
-                .attr("transform", `translate(${centerX}, ${centerY})`)
-                .attr("class", `zone-segment ${segmentLabel}`)
-                .on("mouseover", function() {
-                    d3.select(this).attr("fill", "rgba(60, 60, 60, 0.4)");
-                    d3.select(`.zone-label-${segmentLabel}`).attr("opacity", 1); // Zeige das Label beim Hover
-                })
-                .on("mouseout", function() {
-                    d3.select(this).attr("fill", "rgba(60, 60, 60, 0.2)");
-                    if (d3.select(`.zone-label-${segmentLabel}`).attr("data-has-fleet") != 1) {
-                        d3.select(`.zone-label-${segmentLabel}`).attr("opacity", 0); // Verberge das Label, wenn keine Flotte vorhanden
-                    }
-                });
-
-            // Füge den Text in die Mitte des Segmentbogens hinzu, zunächst unsichtbar
-            container.append("text")
-                .attr("x", textX)
-                .attr("y", textY - 15) // Platzierung oberhalb der Flotte
-                .attr("text-anchor", "middle")
-                .attr("dominant-baseline", "middle")
-                .attr("fill", "#FFFFFF")
-                .attr("font-size", "10px")
-                .attr("class", `zone-label zone-label-${segmentLabel}`)
-                .attr("opacity", 0) // Start mit unsichtbarem Text
-                .attr("data-has-fleet", 0) // Daten-Attribut zum Überprüfen, ob eine Flotte vorhanden ist
-                .text(segmentLabel);
-        }
-    });
-};
-
 const drawSectors = (container, sectors, centerX, centerY) => {
     sectors.forEach(sector => {
         const { ring_index, segment_index, inner_radius, outer_radius } = sector;
 
-        const segmentCount = 18 + ring_index * 2; // Anzahl der Segmente für diesen Ring
+        const segmentCount = 18 + ring_index * 2; // Anzahl der Segmente im Ring
         const segmentAngle = 360 / segmentCount;
         const startAngle = segment_index * segmentAngle;
         const endAngle = startAngle + segmentAngle;
@@ -324,75 +360,43 @@ const drawMoons = (group, moons) => {
     moons.forEach(moon => {
         const moonX = moon.orbitRadius * Math.cos(moon.angle * Math.PI / 180);
         const moonY = moon.orbitRadius * Math.sin(moon.angle * Math.PI / 180);
-        group.append("circle").attr("cx", moonX).attr("cy", moonY).attr("r", moon.size).attr("fill", moon.color);
+        group.append("circle")
+            .attr("cx", moonX)
+            .attr("cy", moonY)
+            .attr("r", moon.size)
+            .attr("fill", moon.color);
     });
 };
 
 const drawFleets = (container, fleets, sectors, centerX, centerY) => {
     fleets.forEach(fleet => {
-        let startX, startY, targetX, targetY;
+        // Since current_sector_id is not available, place fleets near a random planet or system center
+        const planet = planets[Math.floor(Math.random() * planets.length)] || { orbitRadius: 100, angle: 0 };
+        const angle = deg2rad(planet.angle + Math.random() * 360);
+        const x = centerX + (planet.orbitRadius + 30) * Math.cos(angle);
+        const y = centerY + (planet.orbitRadius + 30) * Math.sin(angle);
 
-        if (fleet.status === "moving" && fleet.current_sector_id && fleet.destination_sector_id) {
-            const currentSector = sectors.find(s => s.id === fleet.current_sector_id);
-            const destinationSector = sectors.find(s => s.id === fleet.destination_sector_id);
+        const fleetGroup = container.append("g").attr("transform", `translate(${x}, ${y})`);
 
-            if (currentSector && destinationSector) {
-                const { x: currentX, y: currentY } = calculateSectorPosition(currentSector, centerX, centerY);
-                const { x: destinationX, y: destinationY } = calculateSectorPosition(destinationSector, centerX, centerY);
+        fleetGroup.append("polygon")
+            .attr("points", "-10,10 10,10 0,-10")
+            .attr("fill", fleet.isFriendly ? "green" : "red");
 
-                startX = currentX;
-                startY = currentY;
-                targetX = destinationX;
-                targetY = destinationY;
-            } else {
-                console.warn(`Error finding sectors for Fleet ${fleet.id}`);
-            }
-        } else if (fleet.current_sector_id) {
-            const sector = sectors.find(s => s.id === fleet.current_sector_id);
-
-            if (sector) {
-
-                const { x, y } = calculateSectorPosition(sector, centerX, centerY);
-
-                const fleetGroup = container.append("g").attr("transform", `translate(${x}, ${y})`);
-
-                fleetGroup.append("polygon").attr("points", "-10,10 10,10 0,-10").attr("fill", fleet.isFriendly ? "green" : "red");
-
-                fleetGroup.append("text")
-                    .attr("x", 0)
-                    .attr("y", 20)
-                    .attr("text-anchor", "middle")
-                    .attr("font-size", "10px")
-                    .attr("fill", "#FFFFFF")
-                    .text(fleet.size);
-            } else {
-                console.warn(`Sector not found for Fleet ${fleet.id} with Sector ID ${fleet.current_sector_id}`);
-            }
-        }
+        fleetGroup.append("text")
+            .attr("x", 0)
+            .attr("y", 20)
+            .attr("text-anchor", "middle")
+            .attr("font-size", "10px")
+            .attr("fill", "#FFFFFF")
+            .text(fleet.size);
     });
 };
 
-
-const calculateSectorPosition = (sector, centerX, centerY) => {
-
-    const segmentCount = 18 + sector.ring_index * 2; // Anzahl der Segmente im Ring
-    const segmentAngle = 360 / segmentCount;
-    const startAngle = sector.segment_index * segmentAngle;
-    const midAngleRad = (startAngle + segmentAngle / 2);
-    const radius = (sector.inner_radius + sector.outer_radius) / 2;
-
-    const x = centerX + radius * Math.cos((midAngleRad - 90) * (Math.PI / 180));
-    const y = centerY + radius * Math.sin((midAngleRad - 90) * (Math.PI / 180));
-
-    return { x, y };
+// Helper function to convert degrees to radians
+const deg2rad = (degrees) => {
+    return degrees * (Math.PI / 180);
 };
 
-const calculateProgress = (departureTime, arrivalTime) => {
-    const now = Date.now();
-    const departure = new Date(departureTime).getTime();
-    const arrival = new Date(arrivalTime).getTime();
-
-    return Math.min(1, Math.max(0, (now - departure) / (arrival - departure)));
-};
-
+// Attach functions to the window object for global access
+window.renderGalaxyMap = renderGalaxyMap;
 window.renderSystemMap = renderSystemMap;

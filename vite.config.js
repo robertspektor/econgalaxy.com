@@ -7,10 +7,11 @@ export default defineConfig({
         laravel({
             input: [
                 'resources/css/app.css',
-                'resources/css/boot.css',
                 'resources/js/app.js',
-                'resources/js/boot.js',
-                'resources/js/shutdown.js',
+                'resources/js/galaxy-map.js',
+                'resources/js/system-map.js',
+                'resources/js/faction-borders.js',
+                'resources/js/utils.js',
             ],
             refresh: true,
         }),

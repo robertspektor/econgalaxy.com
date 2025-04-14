@@ -1,8 +1,12 @@
-<div>
+<div class="bg-black text-white h-screen">
     <div id="galaxy-map" class=""></div>
 </div>
 
+@vite('resources/js/galaxymap.js')
+
 <script>
+
+
 
     const systems = @json($systems);
 

@@ -1,0 +1,2264 @@
+/**
+ * Instructions:
+ * - Comments must be in English
+ * - Focus only on relevant business logic
+ * - Generate complete files
+ * - Suggest improvements if applicable
+ *
+ * User prompt:
+ * Bitte erstelle ein Location Widget in der rechten unteren Ecke. Das Widget
+ * soll folgenden Inhalt haben: Name und Visualisierung der Location, Wetter
+ * der Location, Information über Meta Daten, Informationen über Fraktion,
+ * Politische, Ruf, etc.
+ */
+
+// app/Models/Fleet.php
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+
+class Fleet extends Model
+{
+    protected $guarded = [
+    ];
+
+    public function company(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    {
+        return $this->belongsTo(Company::class);
+    }
+
+    public function ships(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(Ship::class);
+    }
+}
+
+
+// app/Models/FleetMovement.php
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+
+class FleetMovement extends Model
+{
+    //
+}
+
+
+// app/Models/Planet.php
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+
+class Planet extends Model
+{
+    protected $guarded = [];
+
+    public function system()
+    {
+        return $this->belongsTo(System::class);
+    }
+
+    public function moons()
+    {
+        return $this->hasMany(Moon::class);
+    }
+
+    public function calculateMoonsForPlanet()
+    {
+        $numMoons = rand(0, 3);
+        $moons = [];
+
+        for ($i = 1; $i < $numMoons; $i++) {
+            $moons[] = [
+                'name' => 'Moon ' . ($i + 1),
+                'size' => rand(3, 6),
+                // gray colors for moons
+                'color' => '#' . str_pad(dechex(mt_rand(0, 0xFFFFFF)), 6, '0', STR_PAD_LEFT),
+                'orbitRadius' => 15 + $i * 15,
+                'angle' => rand(0, 360),
+            ];
+        }
+
+        return $moons;
+    }
+}
+
+
+// app/Models/Travel.php
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+
+class Travel extends Model
+{
+    // travels table
+    protected $table = 'travels';
+
+    protected $fillable = [
+        'user_id',
+        'origin_type',
+        'origin_id',
+        'destination_type',
+        'destination_id',
+        'started_at',
+        'arrives_at',
+    ];
+
+    protected $casts = [
+        'started_at' => 'datetime',
+        'arrives_at' => 'datetime',
+    ];
+
+    public function user()
+    {
+        return $this->belongsTo(User::class);
+    }
+
+    public function origin()
+    {
+        return match ($this->origin_type) {
+            'system' => $this->belongsTo(System::class, 'origin_id'),
+            'planet' => $this->belongsTo(Planet::class, 'origin_id'),
+            'moon' => $this->belongsTo(Moon::class, 'origin_id'),
+            default => null,
+        };
+    }
+
+    public function destination()
+    {
+        return match ($this->destination_type) {
+            'system' => $this->belongsTo(System::class, 'destination_id'),
+            'planet' => $this->belongsTo(Planet::class, 'destination_id'),
+            'moon' => $this->belongsTo(Moon::class, 'destination_id'),
+            default => null,
+        };
+    }
+
+    public function getDestinationLabelAttribute()
+    {
+        if (!$this->destination) {
+            return 'Unknown';
+        }
+
+        return match ($this->destination_type) {
+            'system' => 'System: ' . $this->destination->name,
+            'planet' => 'Planet: ' . $this->destination->name . ' (' . $this->destination->system->name . ')',
+            'moon' => 'Moon: ' . $this->destination->name . ' (' . $this->destination->planet->name . ')',
+            default => 'Unknown',
+        };
+    }
+
+    public function isInTransit()
+    {
+        return now()->isBefore($this->arrives_at);
+    }
+
+    public function completeTravel()
+    {
+        $user = $this->user;
+        $user->location_type = $this->destination_type;
+        $user->location_id = $this->destination_id;
+        $user->save();
+
+        $this->delete(); // Reise abschließen
+
+        // Dispatch ein Event, um die Standortanzeige zu aktualisieren
+        $user->dispatch('location-updated');
+    }
+}
+
+
+// app/Models/Ship.php
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+
+class Ship extends Model
+{
+    //
+}
+
+
+// app/Models/MegaCorporation.php
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+
+class MegaCorporation extends Model
+{
+    //
+}
+
+
+// app/Models/User.php
+<?php
+
+namespace App\Models;
+
+// use Illuminate\Contracts\Auth\MustVerifyEmail;
+use App\Traits\HasLocation;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Foundation\Auth\User as Authenticatable;
+use Illuminate\Notifications\Notifiable;
+
+class User extends Authenticatable
+{
+    use HasLocation;
+
+    /** @use HasFactory<\Database\Factories\UserFactory> */
+    use HasFactory, Notifiable;
+
+    /**
+     * The attributes that are mass assignable.
+     *
+     * @var array<int, string>
+     */
+    protected $fillable = [
+        'username',
+        'email',
+        'password',
+        'player_origin_id',
+        'location_type',
+        'location_id',
+    ];
+
+    /**
+     * The attributes that should be hidden for serialization.
+     *
+     * @var array<int, string>
+     */
+    protected $hidden = [
+        'password',
+        'remember_token',
+    ];
+
+    public function travels()
+    {
+        return $this->hasMany(Travel::class);
+    }
+
+    public function isInTransit()
+    {
+        return $this->travels()->where('arrives_at', '>', now())->exists();
+    }
+
+    public function startTravel($destinationType, $destinationId)
+    {
+        $distance = $this->calculateDistance($destinationType, $destinationId);
+        $travelTime = $this->calculateTravelTime($distance); // In Sekunden
+
+        $travel = Travel::create([
+            'user_id' => $this->id,
+            'origin_type' => $this->location_type,
+            'origin_id' => $this->location_id,
+            'destination_type' => $destinationType,
+            'destination_id' => $destinationId,
+            'started_at' => now(),
+            'arrives_at' => now()->addSeconds($travelTime),
+        ]);
+
+        return $travel;
+    }
+
+    protected function calculateDistance($destinationType, $destinationId)
+    {
+        $origin = $this->location;
+        $destination = match ($destinationType) {
+            'system' => System::findOrFail($destinationId),
+            'planet' => Planet::findOrFail($destinationId),
+            'moon' => Moon::findOrFail($destinationId),
+            default => null,
+        };
+
+        if (!$origin || !$destination) {
+            return 0;
+        }
+
+        $originCoords = $this->coordinates;
+        $destCoords = match ($destinationType) {
+            'system' => ['x' => $destination->x, 'y' => $destination->y],
+            'planet' => [
+                'x' => $destination->system->x + $destination->orbitRadius * cos(deg2rad($destination->angle)),
+                'y' => $destination->system->y + $destination->orbitRadius * sin(deg2rad($destination->angle)),
+            ],
+            'moon' => [
+                'x' => $destination->planet->system->x + $destination->planet->orbitRadius * cos(deg2rad($destination->planet->angle)) + $destination->orbitRadius * cos(deg2rad($destination->angle)),
+                'y' => $destination->planet->system->y + $destination->planet->orbitRadius * sin(deg2rad($destination->planet->angle)) + $destination->orbitRadius * sin(deg2rad($destination->angle)),
+            ],
+            default => ['x' => 0, 'y' => 0],
+        };
+
+        return sqrt(
+            pow($destCoords['x'] - $originCoords['x'], 2) +
+            pow($destCoords['y'] - $originCoords['y'], 2)
+        );
+    }
+
+    protected function calculateTravelTime($distance)
+    {
+        return (int) ($distance * 1000);
+    }
+
+    /**
+     * Get the attributes that should be cast.
+     *
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return [
+            'email_verified_at' => 'datetime',
+            'password' => 'hashed',
+        ];
+    }
+
+    public function company(): \Illuminate\Database\Eloquent\Relations\HasOne
+    {
+        return $this->hasOne(Company::class);
+    }
+
+    public function playerOrigin(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    {
+        return $this->belongsTo(PlayerOrigin::class);
+    }
+}
+
+
+// app/Models/System.php
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+
+class
+System extends Model
+{
+    protected $guarded = [
+    ];
+
+    public function sectors() {
+        return $this->hasMany(Sector::class);
+    }
+
+    public function planets() {
+        return $this->hasMany(Planet::class);
+    }
+
+    public function fleets() {
+        return $this->hasMany(Fleet::class);
+    }
+
+    public function calculateSectorsForSystem($numPlanets, $baseRadius = 100, $orbitSpacing = 100) {
+        $sectors = [];
+
+        for ($ringIndex = 1; $ringIndex < $numPlanets; $ringIndex++) {
+            $innerRadius = $baseRadius + $ringIndex * $orbitSpacing;
+            $outerRadius = $baseRadius + ($ringIndex + 1) * $orbitSpacing;
+
+            // Anzahl der Sektoren für diesen Ring (z. B. 18 im innersten Ring und steigend)
+            $segmentCount = 18 + ($ringIndex * 2);
+
+            for ($segmentIndex = 1; $segmentIndex <= $segmentCount; $segmentIndex++) {
+                $sectors[] = [
+                    'system_id' => $this->id, // Das aktuelle System
+                    'ring_index' => $ringIndex,
+                    'segment_index' => $segmentIndex,
+                    'inner_radius' => $innerRadius,
+                    'outer_radius' => $outerRadius,
+                ];
+            }
+        }
+
+        return $sectors;
+    }
+
+    public function calculatePlanetsForSystem(mixed $num_planets)
+    {
+        $planets = [];
+
+        for ($i = 1; $i < $num_planets; $i++) {
+            $planets[] = [
+                'name' => 'Planet ' . ($i + 1),
+                'size' => rand(8, 15),
+                'color' => '#' . str_pad(dechex(mt_rand(0, 0xFFFFFF)), 6, '0', STR_PAD_LEFT),
+                'orbitRadius' => 100 + $i * 100,
+                'angle' => rand(0, 360),
+            ];
+        }
+
+        return $planets;
+    }
+}
+
+
+// app/Models/Moon.php
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+
+class Moon extends Model
+{
+    protected $guarded = [];
+
+    public function planet()
+    {
+        return $this->belongsTo(Planet::class);
+    }
+}
+
+
+// app/Models/Sector.php
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+
+class Sector extends Model
+{
+    protected $guarded = [
+    ];
+
+    public function system() {
+        return $this->belongsTo(System::class);
+    }
+
+//    public function faction(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+//    {
+//        return $this->belongsTo(Faction::class);
+//    }
+}
+
+
+// app/Models/Company.php
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+
+class Company extends Model
+{
+    protected $guarded = [
+    ];
+
+    public function user(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    {
+        return $this->belongsTo(User::class);
+    }
+
+//    public function employees(): \Illuminate\Database\Eloquent\Relations\HasMany
+//    {
+//        return $this->hasMany(Employee::class);
+//    }
+
+    public function fleets(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(Fleet::class);
+    }
+}
+
+
+// app/Models/Module.php
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+
+class Module extends Model
+{
+    //
+}
+
+
+// app/Models/Faction.php
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+
+class Faction extends Model
+{
+    protected $guarded = [
+    ];
+
+    protected $casts = [
+        'benefits' => 'array',
+        'drawbacks' => 'array',
+    ];
+}
+
+
+// app/Models/WeaponModule.php
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+
+class WeaponModule extends Model
+{
+    //
+}
+
+
+// app/Models/ShipType.php
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+
+class ShipType extends Model
+{
+    //
+}
+
+
+// app/Models/PropulsionModule.php
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+
+class PropulsionModule extends Model
+{
+    //
+}
+
+
+// app/Models/PlayerOrigin.php
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+
+class PlayerOrigin extends Model
+{
+    protected $guarded = [];
+
+    protected $casts = [
+        'benefits' => 'array',
+        'drawbacks' => 'array',
+    ];
+
+}
+
+
+// app/Models/AppState.php
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+
+class AppState extends Model
+{
+    protected $fillable = [
+        'user_id',
+        'app_name',
+        'opened',
+        'minimized',
+        'position',
+        'size',
+    ];
+
+    protected $casts = [
+        'position' => 'array',
+        'size' => 'array',
+        'opened' => 'boolean',
+        'minimized' => 'boolean',
+    ];
+
+    public function user()
+    {
+        return $this->belongsTo(User::class);
+    }
+}
+
+
+// app/Models/Message.php
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+
+class Message extends Model
+{
+    protected $fillable = [
+        'user_id',
+        'from',
+        'to',
+        'subject',
+        'body',
+        'channel',
+        'priority',
+        'folder',
+        'is_read',
+        'received_at',
+    ];
+
+    protected $casts = [
+        'is_read' => 'boolean',
+        'received_at' => 'datetime',
+    ];
+
+    public function user()
+    {
+        return $this->belongsTo(User::class);
+    }
+}
+
+
+// app/Models/JumpGate.php
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+
+class JumpGate extends Model
+{
+    protected $guarded = [
+    ];
+
+    public function sector(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    {
+        return $this->belongsTo(Sector::class);
+    }
+
+    public function target_sector(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    {
+        return $this->belongsTo(Sector::class);
+    }
+}
+
+
+// app/Services/GameTimeService.php
+<?php
+
+namespace App\Services;
+
+use Carbon\Carbon;
+
+class GameTimeService
+{
+    private $startYear = 2765;  // Startjahr in GY
+    private $timeFactor = 60;   // Zeitfaktor (1 Spielminute = 60 reale Sekunden)
+
+    /**
+     * Berechnet die aktuelle Spielzeit basierend auf der realen Zeit.
+     *
+     * @return array
+     */
+    public function getCurrentGameTime()
+    {
+        // Startzeitpunkt des Spiels
+        $gameStart = Carbon::create($this->startYear, 1, 1, 0, 0, 0);
+
+        // Verstrichene reale Sekunden seit dem Startzeitpunkt
+        $realSecondsElapsed = now()->diffInSeconds($gameStart);
+
+        // Verstrichene Spielminuten unter Berücksichtigung des Zeitfaktors
+        $gameMinutesElapsed = $realSecondsElapsed * $this->timeFactor;
+
+        // Ermittlung des aktuellen Spieljahrs und Tages in GY
+        $currentGameDate = $gameStart->copy()->addMinutes($gameMinutesElapsed);
+
+        // Formatieren der Spielzeit als Jahr, Tag und Uhrzeit
+        $gameTime = [
+            'year' => $currentGameDate->year,
+            'day' => $currentGameDate->dayOfYear,
+            'time' => $currentGameDate->format('H:i:s')
+        ];
+
+        return $gameTime;
+    }
+}
+
+
+// database/migrations/2024_10_26_210753_add_owner_type_to_companies_table.php
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
+    {
+        Schema::table('companies', function (Blueprint $table) {
+            $table->enum('owner_type', ['player', 'mega_corporation', 'criminal_organization'])
+                ->after('name')
+                ->default('player');
+        });
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::table('companies', function (Blueprint $table) {
+            $table->dropColumn('owner_type');
+        });
+    }
+};
+
+
+// database/migrations/2024_10_19_183308_create_companies_table.php
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
+    {
+        Schema::create('companies', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('user_id')->constrained();
+            $table->foreignId('faction_id')->constrained();
+            $table->string('name');
+            $table->string('description');
+            $table->timestamps();
+        });
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::dropIfExists('companies');
+    }
+};
+
+
+// database/migrations/2024_10_26_211913_create_ship_weapon_module_table.php
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
+    {
+        Schema::create('ship_weapon_module', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('ship_id')->constrained('ships')->onDelete('cascade');
+            $table->foreignId('weapon_module_id')->constrained('weapon_modules')->onDelete('cascade');
+            $table->integer('slot_position')->nullable();
+            $table->timestamps();
+        });
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::dropIfExists('ship_weapon_module');
+    }
+};
+
+
+// database/migrations/2024_10_26_212002_create_ship_utility_module_table.php
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
+    {
+        Schema::create('ship_utility_module', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('ship_id')->constrained('ships')->onDelete('cascade');
+            $table->foreignId('utility_module_id')->constrained('utility_modules')->onDelete('cascade');
+            $table->integer('slot_position')->nullable();
+            $table->timestamps();
+        });
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::dropIfExists('ship_utility_module');
+    }
+};
+
+
+// database/migrations/2024_10_29_222713_add_player_origin_id_to_users_table.php
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
+    {
+        Schema::table('users', function (Blueprint $table) {
+            $table->foreignId('player_origin_id')
+                ->after('remember_token')
+                ->nullable()->constrained();
+        });
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::table('users', function (Blueprint $table) {
+            $table->dropForeign(['player_origin_id']);
+            $table->dropColumn('player_origin_id');
+        });
+    }
+};
+
+
+// database/migrations/2024_10_29_193723_create_planets_table.php
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
+    {
+        Schema::create('planets', function (Blueprint $table) {
+            $table->id();
+            $table->string('name');
+            $table->integer('size');
+            $table->string('color');
+            $table->integer('orbitRadius');
+            $table->integer('angle');
+            $table->foreignId('system_id')->constrained();
+            $table->timestamps();
+        });
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::dropIfExists('planets');
+    }
+};
+
+
+// database/migrations/2024_10_26_211941_create_ship_defense_module_table.php
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
+    {
+        Schema::create('ship_defense_module', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('ship_id')->constrained('ships')->onDelete('cascade');
+            $table->foreignId('defense_module_id')->constrained('defense_modules')->onDelete('cascade');
+            $table->integer('slot_position')->nullable();
+            $table->timestamps();
+        });
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::dropIfExists('ship_defense_module');
+    }
+};
+
+
+// database/migrations/0001_01_01_000000_create_users_table.php
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
+    {
+        Schema::create('users', function (Blueprint $table) {
+            $table->id();
+            $table->string('username')->unique();
+            $table->string('email')->unique();
+            $table->timestamp('email_verified_at')->nullable();
+            $table->string('password');
+            $table->rememberToken();
+            $table->timestamps();
+        });
+
+        Schema::create('password_reset_tokens', function (Blueprint $table) {
+            $table->string('email')->primary();
+            $table->string('token');
+            $table->timestamp('created_at')->nullable();
+        });
+
+        Schema::create('sessions', function (Blueprint $table) {
+            $table->string('id')->primary();
+            $table->foreignId('user_id')->nullable()->index();
+            $table->string('ip_address', 45)->nullable();
+            $table->text('user_agent')->nullable();
+            $table->longText('payload');
+            $table->integer('last_activity')->index();
+        });
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::dropIfExists('users');
+        Schema::dropIfExists('password_reset_tokens');
+        Schema::dropIfExists('sessions');
+    }
+};
+
+
+// database/migrations/2024_10_29_220827_update_fleets_table.php
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
+    {
+        Schema::table('fleets', function (Blueprint $table) {
+            $table->foreignId('system_id')->nullable()->constrained('systems')->onDelete('set null'); // Derzeitiges System der Flotte (falls im System)
+            $table->foreignId('current_sector_id')->nullable()->constrained('sectors')->onDelete('set null'); // Aktueller Sektor der Flotte
+            $table->foreignId('destination_sector_id')->nullable()->constrained('sectors')->onDelete('set null'); // Zielsektor der Flotte (falls unterwegs)
+            $table->enum('status', ['standby', 'docked', 'moving', 'combat', 'exploring'])->default('standby')->change(); // Status der Flotte
+            $table->timestamp('departure_time')->nullable(); // Abfahrtszeit (nur wenn unterwegs)
+            $table->timestamp('arrival_time')->nullable(); // Ankunftszeit im Zielsektor (nur wenn unterwegs)
+
+        });
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::table('fleets', function (Blueprint $table) {
+            $table->dropForeign(['system_id']);
+            $table->dropColumn('system_id');
+            $table->dropForeign(['current_sector_id']);
+            $table->dropColumn('current_sector_id');
+            $table->dropForeign(['destination_sector_id']);
+            $table->dropColumn('destination_sector_id');
+            $table->enum('status', ['active', 'on_standby', 'engaged', 'docked', 'destroyed'])->default('active')->change();
+            $table->dropColumn('departure_time');
+            $table->dropColumn('arrival_time');
+        });
+    }
+};
+
+
+// database/migrations/2024_10_19_183841_create_sectors_table.php
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
+    {
+        Schema::create('sectors', function (Blueprint $table) {
+            $table->id();
+            $table->string('name');
+            $table->foreignId('faction_id')->constrained();
+            $table->integer('x');
+            $table->integer('y');
+            $table->timestamps();
+        });
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::dropIfExists('sectors');
+    }
+};
+
+
+// database/migrations/0001_01_01_000001_create_cache_table.php
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
+    {
+        Schema::create('cache', function (Blueprint $table) {
+            $table->string('key')->primary();
+            $table->mediumText('value');
+            $table->integer('expiration');
+        });
+
+        Schema::create('cache_locks', function (Blueprint $table) {
+            $table->string('key')->primary();
+            $table->string('owner');
+            $table->integer('expiration');
+        });
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::dropIfExists('cache');
+        Schema::dropIfExists('cache_locks');
+    }
+};
+
+
+// database/migrations/2024_10_26_212029_create_ship_propulsion_module_table.php
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
+    {
+        Schema::create('ship_propulsion_module', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('ship_id')->constrained('ships')->onDelete('cascade');
+            $table->foreignId('propulsion_module_id')->constrained('propulsion_modules')->onDelete('cascade');
+            $table->integer('slot_position')->nullable();
+            $table->timestamps();
+        });
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::dropIfExists('ship_propulsion_module');
+    }
+};
+
+
+// database/migrations/2024_10_29_060456_remove_jump_gates_table.php
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
+    {
+        Schema::dropIfExists('jump_gates');
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::create('jump_gates', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('system_id')->constrained('systems')->onDelete('cascade');
+            $table->foreignId('target_system_id')->constrained('systems')->onDelete('cascade');
+            $table->timestamps();
+        });
+    }
+};
+
+
+// database/migrations/2025_04_13_132009_create_travels_table.php
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
+    {
+        Schema::create('travels', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('user_id')->constrained()->onDelete('cascade');
+            $table->enum('origin_type', ['system', 'planet', 'moon']);
+            $table->unsignedBigInteger('origin_id');
+            $table->enum('destination_type', ['system', 'planet', 'moon']);
+            $table->unsignedBigInteger('destination_id');
+            $table->timestamp('started_at')->useCurrent();
+            $table->timestamp('arrives_at');
+            $table->timestamps();
+        });
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::dropIfExists('travels');
+    }
+};
+
+
+// database/migrations/2024_10_31_223313_add_color_to_systems_table.php
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
+    {
+        Schema::table('systems', function (Blueprint $table) {
+            $table->string('color')->after('name');
+        });
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::table('systems', function (Blueprint $table) {
+            $table->dropColumn('color');
+        });
+    }
+};
+
+
+// database/migrations/2024_10_29_075456_create_sectors_table.php
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
+    {
+        Schema::create('sectors', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('system_id')->constrained('systems')->onDelete('cascade');
+            $table->integer('ring_index'); // Index des Zonenrings (0 = innerster Ring)
+            $table->integer('segment_index'); // Index des Segments innerhalb des Rings
+            $table->integer('inner_radius'); // Berechneter innerer Radius des Rings
+            $table->integer('outer_radius'); // Berechneter äußerer Radius des Rings
+            $table->timestamps();
+        });
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::dropIfExists('sectors');
+    }
+};
+
+
+// database/migrations/2024_10_19_183937_create_jump_gates_table.php
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
+    {
+        Schema::create('jump_gates', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('sector_id')->constrained();
+            $table->foreignId('target_sector_id')->constrained('sectors');
+            $table->integer('x');
+            $table->integer('y');
+            $table->integer('distance');
+
+            $table->foreignId('target_jump_gate_id')
+                ->nullable()
+                ->constrained('jump_gates');
+
+            $table->timestamps();
+        });
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::dropIfExists('jump_gates');
+    }
+};
+
+
+// database/migrations/2024_10_26_163533_create_modules_table.php
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
+    {
+        Schema::create('modules', function (Blueprint $table) {
+            $table->id();
+            $table->string('name');
+            $table->enum('type', ['weapon', 'shield', 'propulsion', 'utility']);
+            $table->foreignId('mega_corporation_id')->constrained()->onDelete('cascade');
+            $table->timestamps();
+        });
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::dropIfExists('modules');
+    }
+};
+
+
+// database/migrations/0001_01_01_000002_create_jobs_table.php
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
+    {
+        Schema::create('jobs', function (Blueprint $table) {
+            $table->id();
+            $table->string('queue')->index();
+            $table->longText('payload');
+            $table->unsignedTinyInteger('attempts');
+            $table->unsignedInteger('reserved_at')->nullable();
+            $table->unsignedInteger('available_at');
+            $table->unsignedInteger('created_at');
+        });
+
+        Schema::create('job_batches', function (Blueprint $table) {
+            $table->string('id')->primary();
+            $table->string('name');
+            $table->integer('total_jobs');
+            $table->integer('pending_jobs');
+            $table->integer('failed_jobs');
+            $table->longText('failed_job_ids');
+            $table->mediumText('options')->nullable();
+            $table->integer('cancelled_at')->nullable();
+            $table->integer('created_at');
+            $table->integer('finished_at')->nullable();
+        });
+
+        Schema::create('failed_jobs', function (Blueprint $table) {
+            $table->id();
+            $table->string('uuid')->unique();
+            $table->text('connection');
+            $table->text('queue');
+            $table->longText('payload');
+            $table->longText('exception');
+            $table->timestamp('failed_at')->useCurrent();
+        });
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::dropIfExists('jobs');
+        Schema::dropIfExists('job_batches');
+        Schema::dropIfExists('failed_jobs');
+    }
+};
+
+
+// database/migrations/2024_10_26_135559_create_mega_corporations_table.php
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
+    {
+        Schema::create('mega_corporations', function (Blueprint $table) {
+            $table->id();
+            $table->string('name');
+            $table->text('description');
+            $table->foreignId('faction_id')->nullable()->constrained()->onDelete('set null'); // Link to primary faction
+            $table->string('specialization')->nullable(); // Specialized ship technology
+            $table->string('color')->nullable(); // Visual color identifier
+            $table->string('logo')->nullable(); // Path to the corporation's logo image
+            $table->timestamps();
+        });
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::dropIfExists('mega_corporations');
+    }
+};
+
+
+// database/migrations/2024_10_29_062958_create_systems_table.php
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
+    {
+        Schema::create('systems', function (Blueprint $table) {
+            $table->id();
+            $table->string('name');
+            $table->integer('num_planets')->default(0);
+            $table->timestamps();
+        });
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::dropIfExists('systems');
+    }
+};
+
+
+// database/migrations/2024_10_27_061241_add_image_to_player_origins_table.php
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
+    {
+        Schema::table('player_origins', function (Blueprint $table) {
+            $table->string('image')
+                ->after('name')
+                ->nullable();
+        });
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::table('player_origins', function (Blueprint $table) {
+            $table->dropColumn('image');
+        });
+    }
+};
+
+
+// database/migrations/2024_10_19_125300_create_factions_table.php
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
+    {
+        Schema::create('factions', function (Blueprint $table) {
+            $table->id();
+            $table->string('name');
+            $table->string('description');
+            $table->string('image')->nullable();
+            $table->string('color');
+            $table->json('benefits');
+            $table->json('drawbacks');
+            $table->timestamps();
+        });
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::dropIfExists('factions');
+    }
+};
+
+
+// database/migrations/2024_10_29_075418_remove_sectors_table.php
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
+    {
+        Schema::dropIfExists('sectors');
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::create('sectors', function (Blueprint $table) {
+            $table->id();
+            $table->string('name');
+            $table->timestamps();
+        });
+    }
+};
+
+
+// database/migrations/2025_04_13_123406_remove_messages_table.php
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
+    {
+        Schema::dropIfExists('messages');
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::create('messages', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('user_id')->constrained()->onDelete('cascade');
+            $table->string('from');
+            $table->string('subject');
+            $table->text('body');
+            $table->boolean('is_read')->default(false);
+            $table->timestamp('received_at')->useCurrent();
+            $table->timestamps();
+        });
+    }
+};
+
+
+// database/migrations/2024_10_26_211451_create_ships_table.php
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
+    {
+        Schema::create('ships', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('ship_type_id')->constrained('ship_types')->onDelete('cascade');
+            $table->foreignId('fleet_id')->constrained('fleets')->onDelete('cascade');
+            $table->integer('current_shield')->nullable();
+            $table->integer('max_shield');
+            $table->integer('current_armor')->nullable();
+            $table->integer('max_armor');
+            $table->integer('current_energy')->nullable();
+            $table->integer('max_energy');
+            $table->timestamps();
+        });
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::dropIfExists('ships');
+    }
+};
+
+
+// database/migrations/2024_10_26_163705_create_propulsion_modules_table.php
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
+    {
+        Schema::create('propulsion_modules', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('module_id')->constrained('modules')->onDelete('cascade');
+            $table->enum('propulsion_type', ['impulse', 'warp', 'jump']);
+            $table->integer('power_consumption');
+
+            // Impulse Specific
+            $table->decimal('max_speed', 8, 2)->nullable();
+            $table->integer('acceleration')->nullable();
+
+            // Warp Specific
+            $table->integer('max_warp_factor')->nullable();
+            $table->integer('warp_range')->nullable();
+
+            // Jump Specific
+            $table->integer('jump_range')->nullable();
+            $table->integer('charge_time')->nullable();
+
+            $table->integer('cooldown');
+            $table->integer('stability')->default(100);
+            $table->timestamps();
+        });
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::dropIfExists('propulsion_modules');
+    }
+};
+
+
+// database/migrations/2024_10_26_134845_add_additional_fields_to_factions_table.php
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
+    {
+        Schema::table('factions', function (Blueprint $table) {
+            $table->string('leader')->nullable()->after('drawbacks');
+            $table->text('leader_bio')->nullable()->after('leader');
+            $table->text('lore')->nullable()->after('leader_bio');
+            $table->json('preferred_ship_types')->nullable()->after('lore');
+            $table->json('allies')->nullable()->after('preferred_ship_types');
+            $table->json('rivals')->nullable()->after('allies');
+        });
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::table('factions', function (Blueprint $table) {
+            $table->dropColumn(['leader', 'leader_bio', 'lore', 'preferred_ship_types', 'allies', 'rivals']);
+        });
+    }
+};
+
+
+// database/migrations/2025_04_13_090313_create_app_states_table.php
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
+    {
+        Schema::create('app_states', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('user_id')->constrained()->onDelete('cascade'); // Verknüpfung mit dem Benutzer
+            $table->string('app_name'); // Name der App (z. B. 'profileManager')
+            $table->boolean('opened')->default(false); // Ist die App geöffnet?
+            $table->boolean('minimized')->default(false); // Ist die App minimiert?
+            $table->json('position'); // Position des Fensters (x, y)
+            $table->json('size'); // Größe des Fensters (width, height)
+            $table->timestamps();
+        });
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::dropIfExists('app_states');
+    }
+};
+
+
+// database/migrations/2024_10_26_163641_create_defense_modules_table.php
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
+    {
+        Schema::create('defense_modules', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('module_id')->constrained('modules')->onDelete('cascade');
+            $table->integer('shield_strength');
+            $table->integer('armor');
+            $table->integer('energy_consumption');
+            $table->timestamps();
+        });
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::dropIfExists('defense_modules');
+    }
+};
+
+
+// database/migrations/2025_04_13_075042_create_messages_table.php
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
+    {
+        Schema::create('messages', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('user_id')->constrained()->onDelete('cascade');
+            $table->string('from');
+            $table->string('subject');
+            $table->text('body');
+            $table->boolean('is_read')->default(false);
+            $table->timestamp('received_at')->useCurrent();
+            $table->timestamps();
+        });
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::dropIfExists('messages');
+    }
+};
+
+
+// database/migrations/2024_10_26_210000_create_utility_modules_table.php
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
+    {
+        Schema::create('utility_modules', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('module_id')->constrained('modules')->onDelete('cascade'); // Link to the main modules table
+            $table->string('effect'); // Primary effect of the utility module
+            $table->integer('power_consumption'); // Power required for the module
+            $table->integer('cooldown')->nullable(); // Cooldown period for active modules, if applicable
+            $table->integer('duration')->nullable(); // Duration for time-limited effects
+            $table->integer('range')->nullable(); // Effective range, if applicable
+            $table->enum('utility_type', ['passive', 'active'])->default('passive'); // Type of utility effect
+            $table->string('special_ability')->nullable(); // Special effect or ability description
+            $table->timestamps();
+        });
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::dropIfExists('utility_modules');
+    }
+};
+
+
+// database/migrations/2025_04_13_131937_add_location_to_users_table.php
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
+    {
+        Schema::table('users', function (Blueprint $table) {
+            $table->enum('location_type', ['system', 'planet', 'moon'])->nullable();
+            $table->unsignedBigInteger('location_id')->nullable();
+        });
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::table('users', function (Blueprint $table) {
+            $table->dropColumn(['location_type', 'location_id']);
+        });
+    }
+};
+
+
+// database/migrations/2024_10_30_230354_add_coordinates_to_systems_table.php
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
+    {
+        Schema::table('systems', function (Blueprint $table) {
+            $table->integer('x')->nullable()->after('name');
+            $table->integer('y')->nullable()->after('x');
+        });
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::table('systems', function (Blueprint $table) {
+            $table->dropColumn('x');
+            $table->dropColumn('y');
+        });
+    }
+};
+
+
+// database/migrations/2024_10_27_061915_remove_faction_id_from_companies_table.php
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
+    {
+        Schema::table('companies', function (Blueprint $table) {
+            $table->dropForeign(['faction_id']);
+            $table->dropColumn('faction_id');
+        });
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::table('companies', function (Blueprint $table) {
+            $table->foreignId('faction_id')->constrained('factions');
+        });
+    }
+};
+
+
+// database/migrations/2024_10_29_212243_create_moons_table.php
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
+    {
+        Schema::create('moons', function (Blueprint $table) {
+            $table->id();
+            $table->string('name');
+            $table->integer('size');
+            $table->string('color');
+            $table->integer('orbitRadius');
+            $table->integer('angle');
+            $table->foreignId('planet_id')->constrained();
+            $table->timestamps();
+        });
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::dropIfExists('moons');
+    }
+};
+
+
+// database/migrations/2024_10_26_211311_create_fleets_table.php
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
+    {
+        Schema::create('fleets', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('company_id')->constrained()->onDelete('cascade');
+            $table->string('name');
+            $table->enum('status', ['active', 'on_standby', 'engaged', 'docked', 'destroyed'])
+                ->default('active');
+            $table->timestamps();
+        });
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::dropIfExists('fleets');
+    }
+};
+
+
+// database/migrations/2024_10_29_221422_create_fleet_movements_table.php
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
+    {
+        Schema::create('fleet_movements', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('fleet_id')->constrained('fleets')->onDelete('cascade'); // Flotte, die sich bewegt
+            $table->foreignId('start_sector_id')->nullable()->constrained('sectors')->onDelete('set null'); // Ausgangssektor
+            $table->foreignId('destination_sector_id')->nullable()->constrained('sectors')->onDelete('set null'); // Zielsektor
+            $table->timestamp('departure_time'); // Startzeit der Bewegung
+            $table->timestamp('arrival_time'); // Geplante Ankunftszeit im Zielsektor
+            $table->enum('status', ['in_progress', 'completed', 'aborted'])->default('in_progress'); // Bewegungsstatus
+            $table->timestamps();
+        });
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::dropIfExists('fleet_movements');
+    }
+};
+
+
+// database/migrations/2024_10_26_140052_create_ship_types_table.php
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
+    {
+        Schema::create('ship_types', function (Blueprint $table) {
+            $table->id();
+            $table->string('name')->unique();
+            $table->text('description');
+            $table->string('size'); // e.g., Small, Medium, Large, Capital
+            $table->integer('weapon_slots')->default(0);
+            $table->integer('defense_slots')->default(0);
+            $table->integer('utility_slots')->default(0);
+            $table->foreignId('mega_corporation_id')->constrained()->onDelete('cascade'); // Foreign key to the Megacorporation
+            $table->timestamps();
+        });
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::dropIfExists('ship_types');
+    }
+};
+
+
+// database/migrations/2024_10_31_223501_add_color_to_systems_table.php
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
+    {
+        Schema::table('systems', function (Blueprint $table) {
+            //
+        });
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::table('systems', function (Blueprint $table) {
+            //
+        });
+    }
+};
+
+
+// database/migrations/2025_04_13_123424_create_messages_table.php
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
+    {
+        Schema::create('messages', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('user_id')->constrained()->onDelete('cascade');
+            $table->string('from'); // Absender (z. B. "Hegemony Command <h-com@core.gov>")
+            $table->string('to')->nullable(); // Empfänger (z. B. "RIX INDUSTRIES HQ")
+            $table->string('subject');
+            $table->text('body');
+            $table->string('channel')->nullable(); // Kommunikationskanal (z. B. "Encrypted [LEVEL 2]")
+            $table->string('priority')->default('normal'); // Priorität (normal, high, critical)
+            $table->string('folder')->default('inbox'); // Ordner (inbox, sent, archive, system, faction)
+            $table->boolean('is_read')->default(false);
+            $table->timestamp('received_at')->useCurrent();
+            $table->timestamps();
+        });
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::dropIfExists('messages');
+    }
+};
+
+
+// database/migrations/2024_10_26_214643_create_player_origins_table.php
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
+    {
+        Schema::create('player_origins', function (Blueprint $table) {
+            $table->id();
+            $table->string('name')->unique(); // Unique name for the origin, e.g., "Federation Core Worlder"
+            $table->foreignId('faction_id')->constrained()->onDelete('cascade'); // Reference to factions table
+            $table->string('region')->nullable(); // General region, e.g., "Core sectors of the Galactic Federation"
+            $table->text('description'); // Origin description
+            $table->string('starting_ship'); // Ship type associated with this origin, e.g., "Federation Transporter"
+            $table->string('manufacturer')->nullable(); // Manufacturer of the starting ship, e.g., "Galactic Federation Shipyards"
+            $table->text('ship_description')->nullable(); // Description of the starting ship
+            $table->json('benefits')->nullable(); // Array of benefits (json format)
+            $table->json('drawbacks')->nullable(); // Array of drawbacks (json format)
+            $table->timestamps();
+        });
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::dropIfExists('player_origins');
+    }
+};
+
+
+// database/migrations/2024_10_26_163620_create_weapon_modules_table.php
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
+    {
+        Schema::create('weapon_modules', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('module_id')->constrained('modules')->onDelete('cascade');
+            $table->integer('primary_damage');
+            $table->string('primary_type');
+            $table->integer('secondary_damage')->nullable();
+            $table->string('secondary_type')->nullable();
+            $table->integer('range');
+            $table->integer('accuracy');
+            $table->integer('cooldown');
+            $table->string('special_ability')->nullable();
+            $table->timestamps();
+        });
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::dropIfExists('weapon_modules');
+    }
+};
+

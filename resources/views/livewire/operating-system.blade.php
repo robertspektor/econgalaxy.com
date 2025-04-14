@@ -80,8 +80,17 @@
                 @endforeach
             </div>
 
-            <!-- Right Section: Dummy Status and Notifications -->
-            <div class="flex gap-2 items-center">
+            <!-- Right Section: System Tray -->
+            <div class="flex gap-2 items-center"
+                 x-data="{ location: '{{ $currentLocationLabel }}' }"
+                 @location-changed.window="location = '{{ $currentLocationLabel }}'; $el.classList.add('animate-crt-flicker')"
+            >
+                <!-- Location Indicator -->
+                <span title="Current Location: {{ $currentLocationLabel }}"
+                      class="text-gray-300 hover:text-cyan-400 flex items-center gap-1">
+                    📍
+                </span>
+
                 <span class="text-gray-300 flex items-center gap-1">
                     <span class="text-yellow-400">💰</span>
                     Credits: 1.250
@@ -115,8 +124,32 @@
         </div>
 
         <!-- SYSTEM INFO -->
-        <div class="absolute top-2 right-4 text-xs text-gray-500">
+        <div class="absolute top-2 right-4 text-xs text-gray-500"
+             x-data="{ location: '{{ $currentLocationLabel }}' }"
+             @location-changed.window="location = '{{ $currentLocationLabel }}'; $el.classList.add('animate-crt-flicker')"
+        >
             {{ now()->format('Y-m-d H:i:s') }}
+            <br>
+            <span class="text-gray-400">📍 <span x-text="location">{{ $currentLocationLabel }}</span></span>
+            @php
+                $travel = auth()->user()->travels()->where('arrives_at', '>', now())->first();
+            @endphp
+            @if($travel)
+                <br>
+                <span class="text-gray-400">In Transit: Arriving at
+                    @if($travel->destination_type === 'system')
+                        🌌 System: {{ $travel->destination->name }}
+                    @elseif($travel->destination_type === 'planet')
+                        Planet: {{ $travel->destination->name }} ({{ $travel->destination->system->name }})
+                    @elseif($travel->destination_type === 'moon')
+                        Moon: {{ $travel->destination->name }} ({{ $travel->destination->planet->name }})
+                    @endif
+                    on {{ $travel->arrives_at->format('Y-m-d H:i:s') }}
+                </span>
+            @endif
         </div>
+
+        <!-- Location Widget (Bottom-Right Corner) -->
+        <x-location-widget />
     </div>
 </div>

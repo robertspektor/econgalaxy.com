@@ -47,19 +47,19 @@ class CreateSystemCommand extends Command
             $system->name = $systemNames->random()['name'];
         }
 
-        $system->x = rand(0, 1000);
-        $system->y = rand(0, 1000);
+        $system->x = rand(0, 200);
+        $system->y = rand(0, 200);
 
         // check if system already near another system
-        $nearbySystems = System::whereBetween('x', [$system->x - 100, $system->x + 100])
-            ->whereBetween('y', [$system->y - 100, $system->y + 100])
+        $nearbySystems = System::whereBetween('x', [$system->x - 10, $system->x + 10])
+            ->whereBetween('y', [$system->y - 10, $system->y + 10])
             ->exists();
 
         while ($nearbySystems) {
-            $system->x = rand(0, 1000);
-            $system->y = rand(0, 1000);
-            $nearbySystems = System::whereBetween('x', [$system->x - 100, $system->x + 100])
-                ->whereBetween('y', [$system->y - 100, $system->y + 100])
+            $system->x = rand(0, 200);
+            $system->y = rand(0, 200);
+            $nearbySystems = System::whereBetween('x', [$system->x - 10, $system->x + 10])
+                ->whereBetween('y', [$system->y - 10, $system->y + 10])
                 ->exists();
         }
 
@@ -82,9 +82,8 @@ class CreateSystemCommand extends Command
             $system->num_planets
         ));
 
-        $system->planets()->createMany($system->calculatePlanetsForSystem(
-            $system->num_planets
-        ));
+        $system->planets()->createMany($system->calculatePlanetsForSystem($system));
+
 
         $system->planets->each(function (Planet $planet) {
             $planet->moons()->createMany($planet->calculateMoonsForPlanet());

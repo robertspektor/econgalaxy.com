@@ -1,3 +1,14 @@
+/**
+ * Instructions:
+ * - Comments must be in English
+ * - Focus only on relevant business logic
+ * - Generate complete files
+ * - Suggest improvements if applicable
+ *
+ * User prompt: Bitte erstelle ein Location Widget in der rechten unteren Ecke. Das Widget soll folgenden Inhalt haben: Name und Visualisierung der Location, Wetter der Location, Information über Meta Daten, Informationen über Fraktion, Politische, Ruf, etc.
+ */
+
+// app/Livewire/OperatingSystem.php
 <?php
 namespace App\Livewire;
 
@@ -63,15 +74,6 @@ class OperatingSystem extends Component
             'opened' => false,
             'minimized' => false,
             'position' => ['x' => 300, 'y' => 300],
-            'size' => ['width' => 800, 'height' => 600],
-        ],
-        [
-            'name' => 'galaxyMap',
-            'label' => 'Galaxy Map',
-            'component' => 'apps.galaxy-map-app',
-            'opened' => false,
-            'minimized' => false,
-            'position' => ['x' => 350, 'y' => 350],
             'size' => ['width' => 800, 'height' => 600],
         ],
     ];
@@ -255,3 +257,4 @@ class OperatingSystem extends Component
         return view('livewire.operating-system');
     }
 }
+

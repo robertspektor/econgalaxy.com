@@ -2,16 +2,15 @@
 
 namespace Database\Seeders;
 
+use App\Models\System;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
 
 class FactionSeeder extends Seeder
 {
-    /**
-     * Run the database seeds.
-     */
     public function run(): void
     {
+        // Define factions
         $factions = [
             [
                 'name' => 'Galactic Federation',
@@ -25,6 +24,8 @@ class FactionSeeder extends Seeder
                 'preferred_ship_types' => json_encode(['Cruisers', 'Battlecruisers', 'Logistics Ships']),
                 'allies' => json_encode(['Trade Syndicate']),
                 'rivals' => json_encode(['Rebel Alliance', 'Rimward Nomads']),
+                'created_at' => now(),
+                'updated_at' => now(),
             ],
             [
                 'name' => 'Trade Syndicate',
@@ -38,6 +39,8 @@ class FactionSeeder extends Seeder
                 'preferred_ship_types' => json_encode(['Freighters', 'Blockade Runners', 'Light Escorts']),
                 'allies' => json_encode(['Galactic Federation']),
                 'rivals' => json_encode(['Rebel Alliance', 'Valtor Cartel']),
+                'created_at' => now(),
+                'updated_at' => now(),
             ],
             [
                 'name' => 'Rebel Alliance',
@@ -51,6 +54,8 @@ class FactionSeeder extends Seeder
                 'preferred_ship_types' => json_encode(['Corvettes', 'Gunships', 'Bombers']),
                 'allies' => json_encode(['Explorers Guild', 'Rimward Nomads']),
                 'rivals' => json_encode(['Galactic Federation']),
+                'created_at' => now(),
+                'updated_at' => now(),
             ],
             [
                 'name' => 'Explorers Guild',
@@ -64,6 +69,8 @@ class FactionSeeder extends Seeder
                 'preferred_ship_types' => json_encode(['Exploration Vessels', 'Scouts', 'Science Vessels']),
                 'allies' => json_encode(['Rebel Alliance']),
                 'rivals' => json_encode(['Galactic Federation']),
+                'created_at' => now(),
+                'updated_at' => now(),
             ],
             [
                 'name' => 'Rimward Nomads',
@@ -77,6 +84,8 @@ class FactionSeeder extends Seeder
                 'preferred_ship_types' => json_encode(['Raider Ships', 'Scouts', 'Resource Gatherers']),
                 'allies' => json_encode(['Rebel Alliance']),
                 'rivals' => json_encode(['Galactic Federation']),
+                'created_at' => now(),
+                'updated_at' => now(),
             ],
             [
                 'name' => 'Valtor Cartel',
@@ -90,6 +99,8 @@ class FactionSeeder extends Seeder
                 'preferred_ship_types' => json_encode(['Smugglers', 'Blockade Runners', 'Stealth Ships']),
                 'allies' => json_encode([]),
                 'rivals' => json_encode(['Galactic Federation', 'Trade Syndicate']),
+                'created_at' => now(),
+                'updated_at' => now(),
             ],
             [
                 'name' => 'Iron Star Foundries',
@@ -103,6 +114,8 @@ class FactionSeeder extends Seeder
                 'preferred_ship_types' => json_encode(['Modular Combat Ships', 'Rugged Transports']),
                 'allies' => json_encode(['Rebel Alliance']),
                 'rivals' => json_encode([]),
+                'created_at' => now(),
+                'updated_at' => now(),
             ],
             [
                 'name' => 'Starfinder Systems',
@@ -116,6 +129,8 @@ class FactionSeeder extends Seeder
                 'preferred_ship_types' => json_encode(['Exploration Vessels', 'Survey Ships']),
                 'allies' => json_encode(['Explorers Guild']),
                 'rivals' => json_encode([]),
+                'created_at' => now(),
+                'updated_at' => now(),
             ],
             [
                 'name' => 'Astral Heavy Industries',
@@ -129,6 +144,8 @@ class FactionSeeder extends Seeder
                 'preferred_ship_types' => json_encode(['Industrial Ships', 'Mining Vessels']),
                 'allies' => json_encode([]),
                 'rivals' => json_encode([]),
+                'created_at' => now(),
+                'updated_at' => now(),
             ],
             [
                 'name' => 'Echo Covert Operations',
@@ -142,11 +159,56 @@ class FactionSeeder extends Seeder
                 'preferred_ship_types' => json_encode(['Stealth Ships', 'Recon Drones']),
                 'allies' => json_encode([]),
                 'rivals' => json_encode(['Galactic Federation']),
+                'created_at' => now(),
+                'updated_at' => now(),
             ],
         ];
 
-        foreach ($factions as $faction) {
-            DB::table('factions')->insert($faction);
+        // Insert factions
+        DB::table('factions')->insert($factions);
+
+        // Fetch existing systems
+        $systems = System::all();
+        if ($systems->isEmpty()) {
+            // Create some systems if none exist
+            $systemNames = ['Alpheratz', 'Vega', 'Pollux', 'Fomalhaut', 'Betelgeuse'];
+            foreach ($systemNames as $index => $name) {
+                System::create([
+                    'name' => $name,
+                    'color' => '#' . str_pad(dechex(mt_rand(0, 0xFFFFFF)), 6, '0', STR_PAD_LEFT),
+                    'x' => ($index - 2) * 100, // Spread systems out
+                    'y' => ($index - 2) * 100,
+                    'num_planets' => rand(1, 5),
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+            }
+            $systems = System::all();
+        }
+
+        // Assign systems to factions based on proximity to faction centers
+        $factions = DB::table('factions')->get();
+        foreach ($systems as $system) {
+            $closestFaction = null;
+            $minDistance = PHP_FLOAT_MAX;
+
+            foreach ($factions as $faction) {
+                $factionCenterX = ($faction->name === 'Galactic Federation') ? 0 : ($faction->name === 'Trade Syndicate' ? 10 : -10);
+                $factionCenterY = ($faction->name === 'Galactic Federation') ? 0 : ($faction->name === 'Trade Syndicate' ? 10 : -10);
+
+                $dx = $system->x - $factionCenterX;
+                $dy = $system->y - $factionCenterY;
+                $distance = sqrt($dx * $dx + $dy * $dy);
+
+                if ($distance < $minDistance) {
+                    $minDistance = $distance;
+                    $closestFaction = $faction;
+                }
+            }
+
+            // Assign the system to the closest faction
+            $system->faction_id = $closestFaction->id;
+            $system->save();
         }
     }
 }
