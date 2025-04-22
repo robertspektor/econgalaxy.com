@@ -76,6 +76,7 @@ window.renderSystemMap = () => {
             .text(planet.name);
     });
 
+    // Verbessertes Zoom-Verhalten
     const zoom = d3.zoom()
         .scaleExtent([0.5, 5])
         .on("zoom", (event) => {
@@ -83,6 +84,13 @@ window.renderSystemMap = () => {
         });
 
     svg.call(zoom);
+
+    // Initiale Zentrierung
+    svg.call(zoom.transform,
+        d3.zoomIdentity
+            .translate(dimensions.width / 2, dimensions.height / 2)
+            .scale(1)
+    );
 };
 
 document.addEventListener('DOMContentLoaded', () => {

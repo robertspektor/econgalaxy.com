@@ -9,7 +9,7 @@ class GalaxyMapApp extends Component
 {
     public $id;
     public $app;
-    public $viewMode = 'galaxy'; // 'galaxy' or 'system'
+    public $viewMode = 'galaxy';
     public $selectedSystem = null;
 
     protected $listeners = [
@@ -22,114 +22,104 @@ class GalaxyMapApp extends Component
         $this->id = $id;
         $this->app = $app;
 
-        // Optionally set the initial system to the player's current location
-        if (auth()->user()->location_type === 'system') {
-            $this->viewMode = 'system';
-            $this->selectedSystem = auth()->user()->location;
-        } elseif (auth()->user()->location_type === 'planet') {
-            $this->viewMode = 'system';
-            $this->selectedSystem = auth()->user()->location->system;
-        } elseif (auth()->user()->location_type === 'moon') {
-            $this->viewMode = 'system';
-            $this->selectedSystem = auth()->user()->location->planet->system;
+        // Set initial system based on player's location
+        $this->initializeFromPlayerLocation();
+    }
+
+    protected function initializeFromPlayerLocation()
+    {
+        $location = auth()->user()->location;
+        if (!$location) return;
+
+        $this->viewMode = 'system';
+
+        switch (auth()->user()->location_type) {
+            case 'system':
+                $this->selectedSystem = $location;
+                break;
+            case 'planet':
+                $this->selectedSystem = $location->system;
+                break;
+            case 'moon':
+                $this->selectedSystem = $location->planet->system;
+                break;
         }
     }
 
     public function switchToGalaxy()
     {
-        \Log::info('Switching to Galaxy View');
         $this->viewMode = 'galaxy';
         $this->selectedSystem = null;
     }
 
     public function switchToSystem($systemId)
     {
-        \Log::info('Switching to System View for system ID:', ['systemId' => $systemId]);
         $this->viewMode = 'system';
         $this->selectedSystem = System::findOrFail($systemId);
-        \Log::info('Selected System Updated:', ['selectedSystem' => $this->selectedSystem->toArray()]);
     }
 
     public function render()
     {
-        // Fetch systems
         $systems = System::all();
-        $systemsData = $systems->map(function ($system) {
+        $currentSystemId = auth()->user()->location->system_id ?? null;
+
+        $systemsData = $systems->map(function ($system) use ($currentSystemId) {
             return [
                 'id' => $system->id,
                 'name' => $system->name,
                 'gridX' => $system->x,
                 'gridY' => $system->y,
                 'num_planets' => $system->num_planets,
+                'isCurrentSystem' => $system->id === $currentSystemId,
             ];
         })->toArray();
 
-        $initialCenter = [
-            'gridX' => auth()->user()->coordinates['x'] ?? 0,
-            'gridY' => auth()->user()->coordinates['y'] ?? 0,
-        ];
-
-        // Prepare systemMapData for System View
         $systemMapData = [];
         if ($this->viewMode === 'system' && $this->selectedSystem) {
-            $system = $this->selectedSystem;
-            $sectors = $system->sectors;
-            $planets = $system->planets;
-            $moons = $system->planets->map(function ($planet) {
-                return $planet->moons;
-            })->flatten();
-
-            $fleets = $system->fleets;
-            $fleets->each(function ($fleet) {
-                $fleet->size = 10;
-                $fleet->isFriendly = $fleet->company && $fleet->company->id === auth()->user()->company->id;
-            });
-
-            $systemMapData = [
-                'system' => $system,
-                'sectors' => $sectors,
-                'planets' => $planets,
-                'moons' => $moons,
-                'fleets' => $fleets,
-            ];
+            $systemMapData = $this->prepareSystemMapData($this->selectedSystem);
         }
 
-        // Fetch fleets for Galaxy View
-        $fleets = $systems->map(function ($system) {
-            return $system->fleets;
-        })->flatten();
-        $fleets->each(function ($fleet) {
-            $fleet->size = 10;
-            $fleet->isFriendly = $fleet->company && $fleet->company->id === auth()->user()->company->id;
-        });
-
-        $spaceports = [
-            ['name' => 'Spaceport 1', 'system' => 'Sol', 'x' => 100, 'y' => 100],
-            ['name' => 'Spaceport 2', 'system' => 'Sol', 'x' => 200, 'y' => 200],
-            ['name' => 'Spaceport 3', 'system' => 'Sol', 'x' => 300, 'y' => 300]
+        $currentSystem = System::find($currentSystemId);
+        $initialCenter = [
+            'gridX' => $currentSystem?->x ?? 0,
+            'gridY' => $currentSystem?->y ?? 0,
         ];
-
-        $playerLocation = [
-            'type' => auth()->user()->location_type,
-            'id' => auth()->user()->location_id,
-        ];
-
-        \Log::info('GalaxyMapApp rendering', [
-            'viewMode' => $this->viewMode,
-            'systemsData' => $systemsData,
-            'selectedSystem' => $this->selectedSystem ? $this->selectedSystem->toArray() : null,
-            'systemMapData' => $systemMapData,
-            'initialCenter' => $initialCenter,
-            'playerLocation' => $playerLocation,
-        ]);
 
         return view('livewire.apps.galaxy-map-app', [
             'systemsData' => $systemsData,
-            'fleets' => $fleets,
-            'spaceports' => $spaceports,
+            'fleets' => $this->getFleets($systems),
             'initialCenter' => $initialCenter,
             'systemMapData' => $systemMapData,
-            'playerLocation' => $playerLocation,
+            'playerLocation' => [
+                'type' => auth()->user()->location_type,
+                'id' => auth()->user()->location_id,
+            ],
         ]);
+    }
+
+    protected function prepareSystemMapData($system)
+    {
+        return [
+            'system' => $system,
+            'sectors' => $system->sectors,
+            'planets' => $system->planets,
+            'moons' => $system->planets->map(fn($planet) => $planet->moons)->flatten(),
+            'fleets' => $system->fleets->map(function ($fleet) {
+                $fleet->size = 10;
+                $fleet->isFriendly = $fleet->company && $fleet->company->id === auth()->user()->company->id;
+                return $fleet;
+            }),
+        ];
+    }
+
+    protected function getFleets($systems)
+    {
+        return $systems->map(function ($system) {
+            return $system->fleets->map(function ($fleet) {
+                $fleet->size = 10;
+                $fleet->isFriendly = $fleet->company && $fleet->company->id === auth()->user()->company->id;
+                return $fleet;
+            });
+        })->flatten();
     }
 }

@@ -1,21 +1,21 @@
 import * as d3 from 'd3';
-import { calculateDimensions, deg2rad } from "./utils.js";
-
+import { calculateDimensions } from "./utils.js";
 
 window.renderGalaxyMap = function(mapData, container) {
     console.log('Starting renderGalaxyMap with data:', mapData);
 
-    // Container-Dimensionen ermitteln und sicherstellen
+    // Container leeren und neu initialisieren
     const containerElement = container;
     containerElement.style.width = '100%';
     containerElement.style.height = '100%';
+    d3.select(container).selectAll("*").remove();
 
     const dimensions = {
         width: containerElement.clientWidth || 800,
         height: containerElement.clientHeight || 600
     };
 
-    // SVG mit festen Dimensionen erstellen
+    // SVG erstellen
     const svg = d3.select(container)
         .append("svg")
         .attr("width", dimensions.width)
@@ -26,14 +26,16 @@ window.renderGalaxyMap = function(mapData, container) {
     const mainGroup = svg.append("g")
         .attr("transform", `translate(${dimensions.width/2}, ${dimensions.height/2})`);
 
-    // Systeme verarbeiten und skalieren
+    // Systeme verarbeiten
     const systems = mapData.systems.map(system => ({
         ...system,
         x: system.gridX,
-        y: system.gridY
+        y: system.gridY,
+        isCurrentSystem: system.gridX === mapData.initialCenter.gridX &&
+                        system.gridY === mapData.initialCenter.gridY
     }));
 
-    // Skalierung berechnen
+    // Skalierung
     const xExtent = d3.extent(systems, d => d.x);
     const yExtent = d3.extent(systems, d => d.y);
     const xScale = d3.scaleLinear()
@@ -48,19 +50,39 @@ window.renderGalaxyMap = function(mapData, container) {
         const x = xScale(system.x);
         const y = yScale(system.y);
 
+        // System-Gruppe
+        const systemGroup = mainGroup.append("g")
+            .attr("transform", `translate(${x},${y})`);
+
+        if (system.isCurrentSystem) {
+            // Äußerer Highlight-Ring
+            systemGroup.append("circle")
+                .attr("r", 12)
+                .attr("fill", "none")
+                .attr("stroke", "#00FFFF")
+                .attr("stroke-width", 2)
+                .attr("opacity", 0.5);
+
+            // Pulsierende Animation
+            systemGroup.append("circle")
+                .attr("r", 8)
+                .attr("fill", "none")
+                .attr("stroke", "#00FFFF")
+                .attr("stroke-width", 1)
+                .attr("opacity", 0.3)
+                .style("animation", "pulse 2s infinite");
+        }
+
         // System-Punkt
-        mainGroup.append("circle")
-            .attr("cx", x)
-            .attr("cy", y)
-            .attr("r", 5)
-            .attr("fill", "#FFFFFF");
+        systemGroup.append("circle")
+            .attr("r", system.isCurrentSystem ? 7 : 5)
+            .attr("fill", system.isCurrentSystem ? "#00FFFF" : "#FFFFFF");
 
         // System-Name
-        mainGroup.append("text")
-            .attr("x", x)
-            .attr("y", y + 15)
+        systemGroup.append("text")
+            .attr("y", 15)
             .attr("text-anchor", "middle")
-            .attr("fill", "#00FFFF")
+            .attr("fill", system.isCurrentSystem ? "#00FFFF" : "#FFFFFF")
             .attr("font-size", "12px")
             .text(system.name);
     });
@@ -74,14 +96,34 @@ window.renderGalaxyMap = function(mapData, container) {
 
     svg.call(zoom);
 
-    // Initiale Zentrierung
-    if (mapData.initialCenter) {
-        const centerX = xScale(mapData.initialCenter.gridX);
-        const centerY = yScale(mapData.initialCenter.gridY);
-        svg.call(zoom.transform,
-            d3.zoomIdentity
-                .translate(dimensions.width/2 - centerX, dimensions.height/2 - centerY)
-                .scale(0.5)
-        );
-    }
+    // Initiale Zentrierung auf das aktuelle System
+    const centerX = xScale(mapData.initialCenter.gridX);
+    const centerY = yScale(mapData.initialCenter.gridY);
+
+    // Diminsion anpassen
+
+
+    svg.call(zoom.transform,
+        d3.zoomIdentity
+            .translate(-centerX, -centerY)
+            .translate(
+                dimensions.width,
+                dimensions.height / 2
+            )
+
+            .scale(1)
+    );
+
+
+
+    // CSS für die pulsierende Animation
+    const style = document.createElement('style');
+    style.textContent = `
+        @keyframes pulse {
+            0% { transform: scale(1); opacity: 0.3; }
+            50% { transform: scale(1.5); opacity: 0.1; }
+            100% { transform: scale(1); opacity: 0.3; }
+        }
+    `;
+    document.head.appendChild(style);
 };
