@@ -1,16 +1,19 @@
 // Utility functions used by both Galaxy Map and System Map
 
-// Convert degrees to radians
+export const calculateDimensions = () => {
+    return {
+        width: window.innerWidth,
+        height: window.innerHeight,
+        padding: 50
+    };
+};
+
 export const deg2rad = (degrees) => {
     return degrees * (Math.PI / 180);
 };
 
-// Calculate dimensions of the map
-export const calculateDimensions = () => {
-    const width = window.innerWidth;
-    const height = window.innerHeight;
-    return { width, height, centerX: width / 2, centerY: height / 2 };
-};
+
+
 
 // Calculate sector position for System Map
 export const calculateSectorPosition = (sector, centerX, centerY) => {
@@ -25,3 +28,4 @@ export const calculateSectorPosition = (sector, centerX, centerY) => {
 
     return { x, y };
 };
+

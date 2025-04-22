@@ -1,28 +1,39 @@
-<div class="bg-black text-white h-screen">
-    <div id="galaxy-map" class=""></div>
-</div>
+<div id="galaxy-map" class="w-full h-full" style="min-height: 600px; background-color: #1a1a24;"></div>
 
-@vite('resources/js/galaxymap.js')
-
+@script
 <script>
+    window.galaxyMapData = {
+        systems: @json($systemsData),
+        fleets: @json($fleets),
+        initialCenter: @json($initialCenter),
+        playerLocation: @json($playerLocation)
+    };
 
+    let maxAttempts = 20;
+    let attempts = 0;
 
+    function initGalaxyMap() {
+        console.log('Initializing galaxy map...');
 
-    const systems = @json($systems);
+        if (typeof window.renderGalaxyMap === 'function') {
+            window.renderGalaxyMap((systemId) => {
+                console.log('System clicked:', systemId);
+            });
+        } else if (attempts < maxAttempts) {
+            attempts++;
+            console.log(`Waiting for renderGalaxyMap to be available (attempt ${attempts})...`);
+            setTimeout(initGalaxyMap, 100);
+        } else {
+            console.error('Failed to initialize galaxy map after max attempts');
+        }
+    }
 
-    const fleets = @json($fleets);
+    document.addEventListener('livewire:navigated', initGalaxyMap);
 
-    const spaceports = @json($spaceports);
-
-    const positions = @json([
-        'gridX' => 1000,
-        'gridY' => 1000,
-    ]);
-
-    document.addEventListener('livewire:navigated', function () {
-        renderGalaxyMap(positions);
-        // renderSchematicGalaxyMap(systems, fleets, spaceports);
-        // renderDynamicGalaxyMap(positions);
-    });
-
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initGalaxyMap);
+    } else {
+        initGalaxyMap();
+    }
 </script>
+@endscript

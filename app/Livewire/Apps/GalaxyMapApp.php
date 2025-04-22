@@ -2,8 +2,6 @@
 
 namespace App\Livewire\Apps;
 
-use App\Models\JumpGate;
-use App\Models\Sector;
 use App\Models\System;
 use Livewire\Component;
 
@@ -13,6 +11,11 @@ class GalaxyMapApp extends Component
     public $app;
     public $viewMode = 'galaxy'; // 'galaxy' or 'system'
     public $selectedSystem = null;
+
+    protected $listeners = [
+        'switchToSystem' => 'switchToSystem',
+        'switchToGalaxy' => 'switchToGalaxy',
+    ];
 
     public function mount($id, $app)
     {
@@ -37,7 +40,6 @@ class GalaxyMapApp extends Component
         \Log::info('Switching to Galaxy View');
         $this->viewMode = 'galaxy';
         $this->selectedSystem = null;
-        $this->dispatch('render-map', viewMode: $this->viewMode);
     }
 
     public function switchToSystem($systemId)
@@ -46,9 +48,6 @@ class GalaxyMapApp extends Component
         $this->viewMode = 'system';
         $this->selectedSystem = System::findOrFail($systemId);
         \Log::info('Selected System Updated:', ['selectedSystem' => $this->selectedSystem->toArray()]);
-        // Force a re-render to update systemMapData before dispatching the event
-        $this->render();
-        $this->dispatch('render-map', viewMode: $this->viewMode);
     }
 
     public function render()
@@ -110,12 +109,18 @@ class GalaxyMapApp extends Component
             ['name' => 'Spaceport 3', 'system' => 'Sol', 'x' => 300, 'y' => 300]
         ];
 
+        $playerLocation = [
+            'type' => auth()->user()->location_type,
+            'id' => auth()->user()->location_id,
+        ];
+
         \Log::info('GalaxyMapApp rendering', [
             'viewMode' => $this->viewMode,
             'systemsData' => $systemsData,
             'selectedSystem' => $this->selectedSystem ? $this->selectedSystem->toArray() : null,
             'systemMapData' => $systemMapData,
             'initialCenter' => $initialCenter,
+            'playerLocation' => $playerLocation,
         ]);
 
         return view('livewire.apps.galaxy-map-app', [
@@ -124,6 +129,7 @@ class GalaxyMapApp extends Component
             'spaceports' => $spaceports,
             'initialCenter' => $initialCenter,
             'systemMapData' => $systemMapData,
+            'playerLocation' => $playerLocation,
         ]);
     }
 }

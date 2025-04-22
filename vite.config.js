@@ -8,7 +8,6 @@ export default defineConfig({
             input: [
                 'resources/css/app.css',
                 'resources/js/app.js',
-                'resources/js/galaxy-map.js',
                 'resources/js/system-map.js',
                 'resources/js/faction-borders.js',
                 'resources/js/utils.js',
