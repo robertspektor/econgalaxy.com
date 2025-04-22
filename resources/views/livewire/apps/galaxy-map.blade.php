@@ -38,5 +38,14 @@
 
     // Start rendering with retry logic
     renderGalaxyMapWithRetry();
+
+    // Event-Listener für System-Updates
+    document.addEventListener('livewire:initialized', () => {
+        Livewire.on('systemSelected', (data) => {
+            // Optional: Hier können wir zusätzliche Client-seitige Aktionen ausführen
+            console.log('System selected:', data);
+        });
+    });
+
 </script>
 @endscript

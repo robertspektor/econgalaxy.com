@@ -20,9 +20,9 @@
 
         <!-- Map Content -->
         <div class="flex-1 p-4 overflow-hidden">
-            <div class="flex w-full h-full gap-4" wire:ignore>
-                <!-- Galaxy Map -->
-                <div class="w-1/2 h-full bg-[#1a1a24] rounded-lg overflow-hidden border border-zinc-700">
+            <div class="flex w-full h-full gap-4">
+                <!-- Galaxy Map mit wire:ignore -->
+                <div class="w-1/2 h-full bg-[#1a1a24] rounded-lg overflow-hidden border border-zinc-700" wire:ignore>
                     <livewire:apps.galaxy-map />
                 </div>
 

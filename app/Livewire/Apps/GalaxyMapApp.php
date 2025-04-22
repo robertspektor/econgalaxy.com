@@ -56,6 +56,12 @@ class GalaxyMapApp extends Component
     {
         $this->viewMode = 'system';
         $this->selectedSystem = System::findOrFail($systemId);
+
+        // Optionale Benachrichtigung an den Client
+        $this->dispatch('systemSelected', [
+            'id' => $systemId,
+            'name' => $this->selectedSystem->name
+        ]);
     }
 
     public function render()

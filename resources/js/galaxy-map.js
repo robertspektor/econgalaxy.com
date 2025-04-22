@@ -52,7 +52,23 @@ window.renderGalaxyMap = function(mapData, container) {
 
         // System-Gruppe
         const systemGroup = mainGroup.append("g")
-            .attr("transform", `translate(${x},${y})`);
+            .attr("transform", `translate(${x},${y})`)
+            .style("cursor", "pointer")
+            .on("click", () => {
+                // Livewire-Event auslösen
+                Livewire.dispatch('switchToSystem', { systemId: system.id });
+
+                // Visuelles Feedback für das ausgewählte System
+                d3.selectAll('.system-highlight').remove();
+                systemGroup.append("circle")
+                    .attr("class", "system-highlight")
+                    .attr("r", 15)
+                    .attr("fill", "none")
+                    .attr("stroke", "#00FFFF")
+                    .attr("stroke-width", 2)
+                    .attr("opacity", 0.5);
+            });
+
 
         if (system.isCurrentSystem) {
             // Äußerer Highlight-Ring
